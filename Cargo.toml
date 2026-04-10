@@ -1,4 +1,4 @@
 [workspace]
 resolver = "3"
-members = ["crates/synth", "crates/synth/examples/keyboard"]
+members = ["crates/synth", "crates/synth/examples/keyboard", "crates/calc"]
 exclude = ["crates/test_esp"]
