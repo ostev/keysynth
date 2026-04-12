@@ -11,7 +11,7 @@ pub enum ExprKind<'a, 's> {
     Identifier(&'s str),
     Literal(Literal),
     /// Represents an `if ... then ... else ...` expression.
-    Comparison(Comparison<'a, 's>),
+    Branch(Branch<'a, 's>),
     Function(Function<'a, 's>),
     /// Represents a function application.
     Application(&'a Expr<'a, 's>, Vec<'a, &'a Expr<'a, 's>>),
@@ -34,7 +34,7 @@ pub enum Literal {
     Boolean(bool),
 }
 
-pub struct Comparison<'a, 's> {
+pub struct Branch<'a, 's> {
     pub predicate: &'a Expr<'a, 's>,
     pub if_true: &'a Expr<'a, 's>,
     pub otherwise: &'a Expr<'a, 's>,
@@ -51,11 +51,25 @@ pub struct Let<'a, 's> {
 }
 
 pub enum BinaryOpKind {
+    Numeric(NumericBinaryOp),
+    Comparison(ComparisonOp),
+}
+
+pub enum NumericBinaryOp {
     Add,
     Sub,
     Mul,
     Div,
     Exp,
+}
+
+pub enum ComparisonOp {
+    Equals,
+    NotEquals,
+    LessThan,
+    LessThanOrEquals,
+    GreaterThan,
+    GreaterThanOrEquals,
 }
 
 pub enum UnaryOpKind {

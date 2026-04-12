@@ -1,4 +1,4 @@
-use core::ops;
+use core::{cmp, ops};
 
 use bumpalo::{
     Bump,
@@ -8,7 +8,10 @@ use micromath::F32Ext;
 use rpds::HashTrieMap;
 
 use crate::{
-    parser::ast::{BinaryOpKind, Comparison, Expr, ExprKind, Let, Literal, UnaryOpKind},
+    parser::ast::{
+        BinaryOpKind, Branch, ComparisonOp, Expr, ExprKind, Let, Literal, NumericBinaryOp,
+        UnaryOpKind,
+    },
     position::Position,
 };
 
@@ -108,7 +111,15 @@ impl<'v, 's> Error<'v, 's> {
 pub enum ErrorKind<'v, 's> {
     IdentifierNotInScope,
     Expected(Type, Value<'v, 's>),
-    IncorrectArity { expected: usize, received: usize },
+    CannotCompareFunctions,
+    ComparisonOperatorTypeMismatch {
+        left: Value<'v, 's>,
+        right: Value<'v, 's>,
+    },
+    IncorrectArity {
+        expected: usize,
+        received: usize,
+    },
 }
 
 pub fn eval<'a: 'v, 'v, 's>(
@@ -132,7 +143,7 @@ pub fn eval<'a: 'v, 'v, 's>(
             },
             scopes,
         ),
-        ExprKind::Comparison(Comparison {
+        ExprKind::Branch(Branch {
             predicate,
             if_true,
             otherwise,
@@ -211,40 +222,64 @@ pub fn eval<'a: 'v, 'v, 's>(
             (value, scopes)
         }
         ExprKind::BinaryOp(left_expr, op, right_expr) => {
-            let operator: fn(f32, f32) -> f32 = match op {
-                BinaryOpKind::Add => ops::Add::add,
-                BinaryOpKind::Sub => ops::Sub::sub,
-                BinaryOpKind::Mul => ops::Mul::mul,
-                BinaryOpKind::Div => ops::Div::div,
-                BinaryOpKind::Exp => |value, exponent| {
-                    if exponent.trunc() == exponent {
-                        value.powi(exponent as i32)
-                    } else {
-                        value.powf(exponent)
-                    }
-                },
-            };
+            let output = match op {
+                BinaryOpKind::Numeric(numeric_op) => {
+                    let operator: fn(f32, f32) -> f32 = match numeric_op {
+                        NumericBinaryOp::Add => ops::Add::add,
+                        NumericBinaryOp::Sub => ops::Sub::sub,
+                        NumericBinaryOp::Mul => ops::Mul::mul,
+                        NumericBinaryOp::Div => ops::Div::div,
+                        NumericBinaryOp::Exp => |value, exponent| {
+                            if exponent.trunc() == exponent {
+                                value.powi(exponent as i32)
+                            } else {
+                                value.powf(exponent)
+                            }
+                        },
+                    };
 
-            let (left, _) = eval(bump, expr, scopes.clone())?;
+                    let (left, _) = eval(bump, expr, scopes.clone())?;
 
-            let output = match left {
-                Value::Number(x) => {
+                    match left {
+                        Value::Number(x) => {
+                            let (right, _) = eval(bump, expr, scopes.clone())?;
+
+                            match right {
+                                Value::Number(y) => Ok(Value::Number(operator(x, y))),
+
+                                _ => Err(Error::new(
+                                    ErrorKind::Expected(Type::Number, right),
+                                    right_expr.position,
+                                )),
+                            }
+                        }
+                        _ => Err(Error::new(
+                            ErrorKind::Expected(Type::Number, left),
+                            left_expr.position,
+                        )),
+                    }?
+                }
+                BinaryOpKind::Comparison(comparison_op) => {
+                    let (left, _) = eval(bump, expr, scopes.clone())?;
                     let (right, _) = eval(bump, expr, scopes.clone())?;
 
-                    match right {
-                        Value::Number(y) => Ok(Value::Number(operator(x, y))),
-
+                    match (left, right) {
+                        (Value::Number(x), Value::Number(y)) => {
+                            Ok(Value::Boolean(compare(comparison_op, x, y)))
+                        }
+                        (Value::Boolean(x), Value::Boolean(y)) => {
+                            Ok(Value::Boolean(compare(comparison_op, x, y)))
+                        }
+                        (Value::Function(_), Value::Function(_)) => {
+                            Err(Error::new(ErrorKind::CannotCompareFunctions, expr.position))
+                        }
                         _ => Err(Error::new(
-                            ErrorKind::Expected(Type::Number, right),
-                            right_expr.position,
+                            ErrorKind::ComparisonOperatorTypeMismatch { left, right },
+                            expr.position,
                         )),
-                    }
+                    }?
                 }
-                _ => Err(Error::new(
-                    ErrorKind::Expected(Type::Number, left),
-                    left_expr.position,
-                )),
-            }?;
+            };
 
             (output, scopes)
         }
@@ -256,4 +291,15 @@ pub fn eval<'a: 'v, 'v, 's>(
             }
         },
     })
+}
+
+fn compare<T: cmp::PartialEq + cmp::PartialOrd>(op: &ComparisonOp, x: T, y: T) -> bool {
+    match op {
+        ComparisonOp::Equals => x == y,
+        ComparisonOp::NotEquals => x != y,
+        ComparisonOp::LessThan => x < y,
+        ComparisonOp::LessThanOrEquals => x <= y,
+        ComparisonOp::GreaterThan => x > y,
+        ComparisonOp::GreaterThanOrEquals => x >= y,
+    }
 }
