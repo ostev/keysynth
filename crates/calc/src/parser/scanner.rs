@@ -3,7 +3,10 @@ use core::{
     str::CharIndices,
 };
 
-use crate::peek_next::{IteratorExt, PeekableNext};
+use crate::{
+    peek_next::{IteratorExt, PeekableNext},
+    position::Position,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -17,6 +20,8 @@ pub enum TokenKind {
     // Literals
     Identifier,
     Number,
+    True,
+    False,
     // Functions
     LeftParen,
     RightParen,
@@ -46,17 +51,17 @@ pub enum TokenKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Token<'s> {
     pub kind: TokenKind,
-    pub line: usize,
-    pub column: usize,
-    pub text: &'s str,
+    pub position: Position<'s>,
 }
 
 impl<'s> Display for Token<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             TokenKind::Newline => write!(f, "Newline"),
-            TokenKind::Identifier => write!(f, "Identifier({})", self.text),
-            TokenKind::Number => write!(f, "Number({})", self.text),
+            TokenKind::Identifier => write!(f, "Identifier({})", self.position.text),
+            TokenKind::Number => write!(f, "Number({})", self.position.text),
+            TokenKind::True => write!(f, "True"),
+            TokenKind::False => write!(f, "False"),
             TokenKind::LeftParen => write!(f, "LeftParen"),
             TokenKind::RightParen => write!(f, "RightParen"),
             TokenKind::Comma => write!(f, "Comma"),
@@ -102,9 +107,12 @@ impl<'s> Scanner<'s> {
 
         Token {
             kind,
-            line: self.line,
-            column: self.column,
-            text: &self.input[index..index + length],
+            position: Position {
+                index,
+                line: self.line,
+                column: self.column,
+                text: &self.input[index..index + length],
+            },
         }
     }
 
@@ -112,19 +120,23 @@ impl<'s> Scanner<'s> {
         self.column += length;
 
         let text = &self.input[index..index + length];
-
-        let make_token = |kind: TokenKind| Token {
-            kind,
-            line: self.line,
-            column: self.column,
-            text,
+        let kind = match text {
+            "if" => TokenKind::If,
+            "then" => TokenKind::Then,
+            "else" => TokenKind::Else,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            _ => TokenKind::Identifier,
         };
 
-        match text {
-            "if" => make_token(TokenKind::If),
-            "then" => make_token(TokenKind::If),
-            "else" => make_token(TokenKind::If),
-            _ => make_token(TokenKind::Identifier),
+        Token {
+            kind,
+            position: Position {
+                index,
+                line: self.line,
+                column: self.column,
+                text,
+            },
         }
     }
 
