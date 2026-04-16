@@ -5,6 +5,5 @@ edition = "2024"
 
 [dependencies]
 bumpalo = { version = "3.20.2", features = ["collections"] }
-chumsky = { version = "0.12.0", default-features = false, features = ["pratt"] }
 micromath = "2.1.0"
 rpds = { version = "1.2.0", default-features = false }
