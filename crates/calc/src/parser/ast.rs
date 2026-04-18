@@ -1,60 +1,62 @@
-use bumpalo::collections::Vec;
+use alloc::vec::Vec;
+use bumpalo::boxed::Box;
 
-use crate::position::Position;
-
-pub struct Expr<'a, 's> {
-    pub kind: ExprKind<'a, 's>,
-    pub position: Position<'s>,
-}
-
-pub enum ExprKind<'a, 's> {
+#[derive(Debug)]
+pub enum Expr<'a, 's> {
     Identifier(&'s str),
     Literal(Literal),
     /// Represents an `if ... then ... else ...` expression.
     Branch(Branch<'a, 's>),
     Function(Function<'a, 's>),
     /// Represents a function application.
-    Application(&'a Expr<'a, 's>, Vec<'a, &'a Expr<'a, 's>>),
+    Application(Box<'a, Expr<'a, 's>>, Vec<Expr<'a, 's>>),
     /// Represents a `let ... in ...` expression.
     Let(Let<'a, 's>),
     /// Represents a binary operator expression like `x + 3` or
     /// `x^n`.
-    BinaryOp(&'a Expr<'a, 's>, BinaryOpKind, &'a Expr<'a, 's>),
+    BinaryOp(Box<'a, Expr<'a, 's>>, BinaryOp, Box<'a, Expr<'a, 's>>),
     /// Represents a unary operator expression like `-x`.
-    UnaryOp(UnaryOpKind, &'a Expr<'a, 's>),
+    UnaryOp(UnaryOpKind, Box<'a, Expr<'a, 's>>),
 }
 
+#[derive(Debug)]
 pub struct Assignment<'a, 's> {
     pub identifier: &'s str,
-    pub expr: &'a Expr<'a, 's>,
+    pub expr: Expr<'a, 's>,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Literal {
     Number(f32),
     Boolean(bool),
 }
 
+#[derive(Debug)]
 pub struct Branch<'a, 's> {
-    pub predicate: &'a Expr<'a, 's>,
-    pub if_true: &'a Expr<'a, 's>,
-    pub otherwise: &'a Expr<'a, 's>,
+    pub predicate: Box<'a, Expr<'a, 's>>,
+    pub if_true: Box<'a, Expr<'a, 's>>,
+    pub otherwise: Box<'a, Expr<'a, 's>>,
 }
 
+#[derive(Debug)]
 pub struct Function<'a, 's> {
-    pub args: Vec<'a, &'s str>,
-    pub body: &'a Expr<'a, 's>,
+    pub args: Vec<&'s str>,
+    pub body: Box<'a, Expr<'a, 's>>,
 }
 
+#[derive(Debug)]
 pub struct Let<'a, 's> {
-    pub assignments: Vec<'a, Assignment<'a, 's>>,
-    pub body: &'a Expr<'a, 's>,
+    pub assignments: Vec<Assignment<'a, 's>>,
+    pub body: Box<'a, Expr<'a, 's>>,
 }
 
-pub enum BinaryOpKind {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BinaryOp {
     Numeric(NumericBinaryOp),
-    Comparison(ComparisonOp),
+    Comparison(ComparisonBinaryOp),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NumericBinaryOp {
     Add,
     Sub,
@@ -63,7 +65,8 @@ pub enum NumericBinaryOp {
     Exp,
 }
 
-pub enum ComparisonOp {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ComparisonBinaryOp {
     Equals,
     NotEquals,
     LessThan,
@@ -72,6 +75,7 @@ pub enum ComparisonOp {
     GreaterThanOrEquals,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UnaryOpKind {
     Negate,
 }

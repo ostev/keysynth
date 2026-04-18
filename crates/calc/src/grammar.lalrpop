@@ -1,0 +1,163 @@
+
+use crate::parser::ast::{self, Expr, Literal, BinaryOp, NumericBinaryOp, ComparisonBinaryOp, Let, Assignment, Function};
+use crate::parser::scanner::{self, Token};
+use bumpalo::{Bump, boxed::Box};
+use alloc::vec::Vec;
+
+grammar<'s, 'a>(input: &'s str, bump: &'a Bump) where 's: 'a;
+
+extern {
+    type Location = usize;
+    type Error = scanner::Error;
+
+    enum Token<'s> {
+        "\n" => Token::Newline,
+        ";" => Token::Semicolon,
+        ident => Token::Identifier(<&'s str>),
+        num => Token::Number(<f32>),
+        "true" => Token::True,
+        "false" => Token::False,
+        "(" => Token::LeftParen,
+        ")" => Token::RightParen,
+        "," => Token::Comma,
+        "-" => Token::Minus,
+        "+" => Token::Plus,
+        "/" => Token::Slash,
+        "*" => Token::Star,
+        "^" => Token::Caret,
+        "=" => Token::Equal,
+        "==" => Token::EqualEqual,
+        "!=" => Token::BangEqual,
+        ">" => Token::Greater,
+        ">=" => Token::GreaterEqual,
+        "<" => Token::Less,
+        "<=" => Token::LessEqual,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+        "let" => Token::Let,
+        "in" => Token::In,
+        "fn" => Token::Fn,
+        "=>" => Token::Arrow
+    }
+}
+
+pub Expr: Expr<'a, 's> = {
+    #[precedence(level="0")]
+    Term,
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    <e1: Expr> <args: Arguments>  => Expr::Application(Box::new_in(e1, bump), args),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <lhs: Expr> <op: ExponentOp> <rhs: Expr> => Expr::BinaryOp(Box::new_in(lhs, bump), BinaryOp::Numeric(op), Box::new_in(rhs, bump)),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <lhs: Expr> <op: MultiplicativeOp> <rhs: Expr> => Expr::BinaryOp(Box::new_in(lhs, bump), BinaryOp::Numeric(op), Box::new_in(rhs, bump)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <lhs: Expr> <op: AdditiveOp> <rhs: Expr> => Expr::BinaryOp(Box::new_in(lhs, bump), BinaryOp::Numeric(op), Box::new_in(rhs, bump)),
+
+    #[precedence(level="5")] #[assoc(side="left")]
+    <lhs: Expr> <op: ComparisonOp> <rhs: Expr> => Expr::BinaryOp(Box::new_in(lhs, bump), BinaryOp::Comparison(op), Box::new_in(rhs, bump)),
+
+    #[precedence(level="6")] #[assoc(side="none")]
+    Let => Expr::Let(<>),
+
+    #[precedence(level="7")] #[assoc(side="right")]
+    AnonymousFunction => Expr::Function(<>),
+};
+
+
+Term : Expr<'a, 's> = {
+    Num => Expr::Literal(Literal::Number(<>)),
+    Identifier => Expr::Identifier(<>),
+    "(" <Expr> ")"
+}
+
+Comma<T>: Vec<T> = { // (1)
+    <mut v:(<T> ",")*> <e:T?> => match e { // (2)
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+Arguments: Vec<Expr<'a, 's>> = "(" <Comma<Expr>> ")";
+
+/// Arithmetic operators with the lowest precedence
+AdditiveOp: NumericBinaryOp = {
+    "+" => NumericBinaryOp::Add,
+    "-" => NumericBinaryOp::Sub,
+};
+
+/// Arithmetic operators with the second lowest precedence
+MultiplicativeOp: NumericBinaryOp = {
+    "*" => NumericBinaryOp::Mul,
+    "/" => NumericBinaryOp::Div,
+};
+
+/// Arithmetic operators with the highest precedence
+ExponentOp: NumericBinaryOp = {
+    "^" => NumericBinaryOp::Exp
+}
+
+ComparisonOp: ComparisonBinaryOp = {
+    "==" => ComparisonBinaryOp::Equals,
+    "!=" => ComparisonBinaryOp::NotEquals,
+    "<" => ComparisonBinaryOp::LessThan,
+    "<=" => ComparisonBinaryOp::LessThanOrEquals,
+    ">" => ComparisonBinaryOp::GreaterThan,
+    ">=" => ComparisonBinaryOp::GreaterThanOrEquals,
+}
+
+
+Num: f32 = {
+    num => (<>),
+};
+
+Identifier: &'s str = {
+    ident => (<>),
+}
+
+AssignmentSeperator: () = {
+    "\n" => (),
+    ";" => ()
+}
+
+Assignment: Assignment<'a, 's> = {
+    <identifier: Identifier> <function: FunctionBody> => Assignment { identifier, expr: Expr::Function(function) }, 
+    <identifier: Identifier> "=" <expr: Expr> => Assignment { identifier, expr }
+}
+
+Assignments: Vec<Assignment<'a, 's>> = {
+    <mut leading: (<Assignment> AssignmentSeperator)*> <trailing: Assignment?> => match trailing {
+        None => leading,
+        Some(trailing) => {
+            leading.push(trailing);
+            leading
+        }
+    }
+}
+
+Let: Let<'a, 's> = {
+    "let" <assignments: Assignments> "in" <body: Expr>
+        => Let {
+            assignments,
+            body: Box::new_in(body, bump),
+        }
+}
+
+AnonymousFunction : Function<'a, 's> = "fn" <FunctionBody>;
+
+FunctionBody : Function<'a, 's> = {
+    "(" <args: Comma<Identifier>> ")" "=>" <body: Expr>
+        => Function {
+            args,
+            body: Box::new_in(body, bump),
+        }
+}
+
+
