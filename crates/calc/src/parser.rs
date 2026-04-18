@@ -4,7 +4,7 @@ use lalrpop_util::ParseError;
 use crate::{
     grammar,
     parser::{
-        ast::Expr,
+        ast::{Expr, Spanned},
         scanner::{Scanner, Token},
     },
 };
@@ -17,6 +17,6 @@ pub mod scanner;
 pub fn parse<'a: 's, 's>(
     bump: &'a Bump,
     input: &'s str,
-) -> Result<Expr<'a, 's>, ParseError<usize, Token<'s>, scanner::Error>> {
+) -> Result<Spanned<'a, 's>, ParseError<usize, Token<'s>, scanner::Error>> {
     grammar::ExprParser::new().parse(input, bump, Scanner::new(input))
 }

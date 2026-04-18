@@ -1,11 +1,5 @@
-use crate::{
-    peek_next::{IteratorExt, PeekableNext},
-    position::Position,
-};
-use core::{
-    fmt::{self, Display},
-    str::CharIndices,
-};
+use crate::peek_next::{IteratorExt, PeekableNext};
+use core::str::CharIndices;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {

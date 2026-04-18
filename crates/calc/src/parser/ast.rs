@@ -2,6 +2,19 @@ use alloc::vec::Vec;
 use bumpalo::boxed::Box;
 
 #[derive(Debug)]
+pub struct Spanned<'a, 's> {
+    pub expr: Expr<'a, 's>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl<'a, 's> Spanned<'a, 's> {
+    pub fn new(start: usize, end: usize, expr: Expr<'a, 's>) -> Self {
+        Self { start, end, expr }
+    }
+}
+
+#[derive(Debug)]
 pub enum Expr<'a, 's> {
     Identifier(&'s str),
     Literal(Literal),
@@ -9,20 +22,20 @@ pub enum Expr<'a, 's> {
     Branch(Branch<'a, 's>),
     Function(Function<'a, 's>),
     /// Represents a function application.
-    Application(Box<'a, Expr<'a, 's>>, Vec<Expr<'a, 's>>),
+    Application(Box<'a, Spanned<'a, 's>>, Vec<Spanned<'a, 's>>),
     /// Represents a `let ... in ...` expression.
     Let(Let<'a, 's>),
     /// Represents a binary operator expression like `x + 3` or
     /// `x^n`.
-    BinaryOp(Box<'a, Expr<'a, 's>>, BinaryOp, Box<'a, Expr<'a, 's>>),
+    BinaryOp(Box<'a, Spanned<'a, 's>>, BinaryOp, Box<'a, Spanned<'a, 's>>),
     /// Represents a unary operator expression like `-x`.
-    UnaryOp(UnaryOpKind, Box<'a, Expr<'a, 's>>),
+    UnaryOp(UnaryOpKind, Box<'a, Spanned<'a, 's>>),
 }
 
 #[derive(Debug)]
 pub struct Assignment<'a, 's> {
     pub identifier: &'s str,
-    pub expr: Expr<'a, 's>,
+    pub expr: Spanned<'a, 's>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -33,21 +46,21 @@ pub enum Literal {
 
 #[derive(Debug)]
 pub struct Branch<'a, 's> {
-    pub predicate: Box<'a, Expr<'a, 's>>,
-    pub if_true: Box<'a, Expr<'a, 's>>,
-    pub otherwise: Box<'a, Expr<'a, 's>>,
+    pub predicate: Box<'a, Spanned<'a, 's>>,
+    pub if_true: Box<'a, Spanned<'a, 's>>,
+    pub otherwise: Box<'a, Spanned<'a, 's>>,
 }
 
 #[derive(Debug)]
 pub struct Function<'a, 's> {
     pub args: Vec<&'s str>,
-    pub body: Box<'a, Expr<'a, 's>>,
+    pub body: Box<'a, Spanned<'a, 's>>,
 }
 
 #[derive(Debug)]
 pub struct Let<'a, 's> {
     pub assignments: Vec<Assignment<'a, 's>>,
-    pub body: Box<'a, Expr<'a, 's>>,
+    pub body: Box<'a, Spanned<'a, 's>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
