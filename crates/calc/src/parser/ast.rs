@@ -9,10 +9,16 @@ pub struct Spanned<'a, 's> {
 }
 
 impl<'a, 's> Spanned<'a, 's> {
-    pub fn new(start: usize, end: usize, expr: Expr<'a, 's>) -> Self {
+    pub const fn new(start: usize, end: usize, expr: Expr<'a, 's>) -> Self {
         Self { start, end, expr }
     }
+
+    pub const fn span(&self) -> (usize, usize) {
+        (self.start, self.end)
+    }
 }
+
+pub type Span = (usize, usize);
 
 #[derive(Debug)]
 pub enum Expr<'a, 's> {
