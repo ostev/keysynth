@@ -46,53 +46,17 @@ pub enum Token<'s> {
     In,
 }
 
-// pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
-
 pub type Spanned<'s> = Result<(usize, Token<'s>, usize), Error>;
-
-// impl<Error: Display> Display for Spanned<Token, usize, Error> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match &self.kind {
-//             Token::Newline => write!(f, "Newline"),
-//             Token::Identifier => write!(f, "Identifier({})",),
-//             Token::Number => write!(f, "Number({})", self.position.text),
-//             Token::True => write!(f, "True"),
-//             Token::False => write!(f, "False"),
-//             Token::LeftParen => write!(f, "LeftParen"),
-//             Token::RightParen => write!(f, "RightParen"),
-//             Token::Comma => write!(f, "Comma"),
-//             Token::Minus => write!(f, "Minus"),
-//             Token::Plus => write!(f, "Plus"),
-//             Token::Slash => write!(f, "Slash"),
-//             Token::Star => write!(f, "Star"),
-//             Token::Caret => write!(f, "Caret"),
-//             Token::Equal => write!(f, "Equal"),
-//             Token::EqualEqual => write!(f, "EqualEqual"),
-//             Token::Greater => write!(f, "Greater"),
-//             Token::GreaterEqual => write!(f, "GreaterEqual"),
-//             Token::Less => write!(f, "Less"),
-//             Token::LessEqual => write!(f, "LessEqual"),
-//             Token::If => write!(f, "If"),
-//             Token::Then => write!(f, "Then"),
-//             Token::Else => write!(f, "Else"),
-//             Token::Error(error) => write!(f, "Error({:?})", error),
-//         }
-//     }
-// }
 
 pub struct Scanner<'s> {
     input: &'s str,
     chars: PeekableNext<CharIndices<'s>>,
-    // line: usize,
-    // column: usize,
 }
 
 impl<'s> Scanner<'s> {
     pub fn new(input: &'s str) -> Scanner<'s> {
         Scanner {
             chars: input.char_indices().peekable_next(),
-            // line: 0,
-            // column: 0,
             input,
         }
     }
@@ -129,7 +93,7 @@ impl<'s> Scanner<'s> {
                         .map(|(_, char_2)| *char_2 == '/')
                         .unwrap_or(false);
 
-                (*char != '\n' && char.is_whitespace()) || is_comment
+                char.is_whitespace() || is_comment
             })
             .unwrap_or(false)
     }
