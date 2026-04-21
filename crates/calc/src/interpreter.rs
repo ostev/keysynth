@@ -1,11 +1,7 @@
 use core::{cmp, f32, fmt, ops};
 
-use alloc::rc::Rc;
-use bumpalo::{
-    Bump,
-    boxed::Box,
-    collections::{CollectIn, Vec},
-};
+use alloc::{rc::Rc, vec::Vec};
+use bumpalo::{Bump, boxed::Box};
 use micromath::F32Ext;
 use rpds::{HashTrieMap, List};
 
@@ -20,14 +16,14 @@ use crate::{
 pub mod builtins;
 
 #[derive(Clone)]
-pub enum Value<'v, 's> {
+pub enum Value<'a, 's> {
     Number(f32),
     Boolean(bool),
-    Function(FunctionValue<'v, 's>),
+    Function(FunctionValue<'a, 's>),
     BuiltinFunction(BuiltinFunction),
 }
 
-impl<'v, 's> fmt::Debug for Value<'v, 's> {
+impl<'a, 's> fmt::Debug for Value<'a, 's> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Number(number) => write!(f, "{}", number),
@@ -38,7 +34,7 @@ impl<'v, 's> fmt::Debug for Value<'v, 's> {
     }
 }
 
-impl<'v, 's> From<BuiltinValue> for Value<'v, 's> {
+impl<'a, 's> From<BuiltinValue> for Value<'a, 's> {
     fn from(value: BuiltinValue) -> Self {
         match value {
             BuiltinValue::Number(num) => Value::Number(num),
@@ -47,8 +43,8 @@ impl<'v, 's> From<BuiltinValue> for Value<'v, 's> {
     }
 }
 
-impl<'v, 's> Value<'v, 's> {
-    pub fn map_number(self, span: Span, f: impl Fn(f32) -> f32) -> Result<Self, Error<'v, 's>> {
+impl<'a, 's> Value<'a, 's> {
+    pub fn map_number(self, span: Span, f: impl Fn(f32) -> f32) -> Result<Self, Error<'a, 's>> {
         match self {
             Value::Number(number) => Ok(Value::Number(f(number))),
             _ => Err(Error::new(ErrorKind::Expected(Type::Number, self), span)),
@@ -57,8 +53,8 @@ impl<'v, 's> Value<'v, 's> {
     pub fn flatmap_number(
         self,
         span: Span,
-        f: impl Fn(f32) -> EvalResult<'v, 's>,
-    ) -> EvalResult<'v, 's> {
+        f: impl Fn(f32) -> EvalResult<'a, 's>,
+    ) -> EvalResult<'a, 's> {
         match self {
             Value::Number(number) => f(number),
             _ => Err(Error::new(ErrorKind::Expected(Type::Number, self), span)),
@@ -68,15 +64,15 @@ impl<'v, 's> Value<'v, 's> {
     pub fn flatmap_boolean(
         self,
         span: Span,
-        f: impl Fn(bool) -> EvalResult<'v, 's>,
-    ) -> EvalResult<'v, 's> {
+        f: impl Fn(bool) -> EvalResult<'a, 's>,
+    ) -> EvalResult<'a, 's> {
         match self {
             Value::Boolean(boolean) => f(boolean),
             _ => Err(Error::new(ErrorKind::Expected(Type::Boolean, self), span)),
         }
     }
 
-    pub fn map_boolean(self, span: Span, f: &impl Fn(bool) -> bool) -> Result<Self, Error<'v, 's>> {
+    pub fn map_boolean(self, span: Span, f: &impl Fn(bool) -> bool) -> Result<Self, Error<'a, 's>> {
         match self {
             Value::Boolean(boolean) => Ok(Value::Boolean(f(boolean))),
             _ => Err(Error::new(ErrorKind::Expected(Type::Boolean, self), span)),
@@ -91,37 +87,37 @@ pub enum Type {
     Function,
 }
 
-pub type FunctionValue<'v, 's> = Rc<dyn Fn(Span, Vec<'v, Value<'v, 's>>) -> EvalResult<'v, 's>>;
+pub type FunctionValue<'a, 's> = Rc<dyn Fn(Span, Vec<Value<'a, 's>>) -> EvalResult<'a, 's> + 'a>;
 
 /// A scope is defined as a stack of mappings between a name and a potentially evaluated value.
 /// When the code contains an identifier, the interpreter checks each scope in the stack
 /// (starting at the front) to see if it contains the identifier. If the identifier is a thunk
 /// (i.e. has not yet been evaluated because of assignment ordering), the assignment that
 /// references it will become a thunk.
-pub type Scopes<'v, 's> = rpds::List<rpds::HashTrieMap<&'s str, Value<'v, 's>>>;
+pub type Scopes<'a, 's> = rpds::List<rpds::HashTrieMap<&'s str, Value<'a, 's>>>;
 
-pub type EvalResult<'v, 's> = Result<(Value<'v, 's>, Scopes<'v, 's>), Error<'v, 's>>;
+pub type EvalResult<'a, 's> = Result<(Value<'a, 's>, Scopes<'a, 's>), Error<'a, 's>>;
 
 #[derive(Debug)]
-pub struct Error<'v, 's> {
-    pub kind: ErrorKind<'v, 's>,
+pub struct Error<'a, 's> {
+    pub kind: ErrorKind<'a, 's>,
     pub span: (usize, usize),
 }
 
-impl<'v, 's> Error<'v, 's> {
-    pub const fn new(kind: ErrorKind<'v, 's>, span: (usize, usize)) -> Self {
+impl<'a, 's> Error<'a, 's> {
+    pub const fn new(kind: ErrorKind<'a, 's>, span: (usize, usize)) -> Self {
         Self { kind, span }
     }
 }
 
 #[derive(Debug)]
-pub enum ErrorKind<'v, 's> {
+pub enum ErrorKind<'a, 's> {
     IdentifierNotInScope,
-    Expected(Type, Value<'v, 's>),
+    Expected(Type, Value<'a, 's>),
     CannotCompareFunctions,
     ComparisonBinaryOperatorTypeMismatch {
-        left: Value<'v, 's>,
-        right: Value<'v, 's>,
+        left: Value<'a, 's>,
+        right: Value<'a, 's>,
     },
     IncorrectArity {
         expected: usize,
@@ -151,11 +147,7 @@ pub enum ErrorKind<'v, 's> {
     },
 }
 
-pub fn eval<'a: 'v, 'v, 's>(
-    bump: &'v Bump,
-    spanned: &'a Spanned<'a, 's>,
-    scopes: Scopes<'v, 's>,
-) -> EvalResult<'v, 's> {
+pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> EvalResult<'a, 's> {
     Ok(match &spanned.expr {
         Expr::Identifier(identifier) => {
             let value = match scopes
@@ -181,13 +173,13 @@ pub fn eval<'a: 'v, 'v, 's>(
             if_true,
             otherwise,
         }) => {
-            let (condition, _) = eval(bump, predicate, scopes.clone())?;
+            let (condition, _) = eval(predicate, scopes.clone())?;
 
             let (value, _) = condition.flatmap_boolean(spanned.span(), |boolean| {
                 if boolean {
-                    eval(bump, if_true, scopes.clone())
+                    eval(if_true, scopes.clone())
                 } else {
-                    eval(bump, otherwise, scopes.clone())
+                    eval(otherwise, scopes.clone())
                 }
             })?;
 
@@ -195,7 +187,7 @@ pub fn eval<'a: 'v, 'v, 's>(
         }
         Expr::Function(function) => {
             let cloned_scopes = scopes.clone();
-            let f = move |callsite: Span, args: Vec<'v, Value<'v, 's>>| {
+            let f = move |callsite: Span, args: Vec<Value<'a, 's>>| {
                 if args.len() != function.args.len() {
                     Err(Error::new(
                         ErrorKind::IncorrectArity {
@@ -214,19 +206,19 @@ pub fn eval<'a: 'v, 'v, 's>(
                             .collect(),
                     );
 
-                    eval(bump, &function.body, body_scope)
+                    eval(&function.body, body_scope)
                 }
             };
 
             (Value::Function(Rc::new(f)), cloned_scopes)
         }
         Expr::Application(function_expr, args) => {
-            let evaluated_args: Vec<'v, Value<'v, 's>> = args
+            let evaluated_args: Vec<Value<'a, 's>> = args
                 .iter()
-                .map(|arg| eval(bump, arg, scopes.clone()).map(|(value, _)| value))
-                .collect_in::<Result<_, Error>>(bump)?;
+                .map(|arg| eval(arg, scopes.clone()).map(|(value, _)| value))
+                .collect::<Result<Vec<_>, Error>>()?;
 
-            let (function_value, _) = eval(bump, function_expr, scopes.clone())?;
+            let (function_value, _) = eval(function_expr, scopes.clone())?;
 
             match function_value {
                 Value::Function(function) => {
@@ -247,14 +239,14 @@ pub fn eval<'a: 'v, 'v, 's>(
             let new_scope = assignments.iter().try_fold(
                 HashTrieMap::new(),
                 |mut accumulated_scope, assignment| {
-                    let (value, _) = eval(bump, &assignment.expr, scopes.clone())?;
+                    let (value, _) = eval(&assignment.expr, scopes.clone())?;
 
                     accumulated_scope.insert_mut(assignment.identifier, value);
                     Ok(accumulated_scope)
                 },
             )?;
 
-            let (value, _) = eval(bump, body, scopes.push_front(new_scope))?;
+            let (value, _) = eval(body, scopes.push_front(new_scope))?;
 
             (value, scopes)
         }
@@ -301,11 +293,11 @@ pub fn eval<'a: 'v, 'v, 's>(
                         }
                     };
 
-                    let (left, _) = eval(bump, left_expr, scopes.clone())?;
+                    let (left, _) = eval(left_expr, scopes.clone())?;
 
                     match left {
                         Value::Number(x) => {
-                            let (right, _) = eval(bump, right_expr, scopes.clone())?;
+                            let (right, _) = eval(right_expr, scopes.clone())?;
 
                             match right {
                                 Value::Number(y) => operator(x, y).map(Value::Number),
@@ -323,10 +315,10 @@ pub fn eval<'a: 'v, 'v, 's>(
                     }?
                 }
                 BinaryOp::Comparison(comparison_op) => {
-                    let (left, _) = eval(bump, left_expr, scopes.clone())?;
-                    let (right, _) = eval(bump, right_expr, scopes.clone())?;
+                    let (left, _) = eval(left_expr, scopes.clone())?;
+                    let (right, _) = eval(right_expr, scopes.clone())?;
 
-                    match (left, right) {
+                    match (&left, &right) {
                         (Value::Number(x), Value::Number(y)) => {
                             Ok(Value::Boolean(compare(comparison_op, x, y)))
                         }
@@ -355,7 +347,7 @@ pub fn eval<'a: 'v, 'v, 's>(
         }
         Expr::UnaryOp(op, expr) => match op {
             UnaryOpKind::Negate => {
-                let (value, _) = eval(bump, expr, scopes.clone())?;
+                let (value, _) = eval(expr, scopes.clone())?;
                 let negated = value.map_number(expr.span(), ops::Neg::neg)?;
                 (negated, scopes)
             }

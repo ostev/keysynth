@@ -33,15 +33,14 @@ pub enum ExecutionError<'v, 's> {
     RuntimeError(interpreter::Error<'v, 's>),
 }
 
-pub fn run<'a: 'v + 's, 'v, 's>(
+pub fn run<'a, 's: 'a>(
     ast_arena: &'a Bump,
-    value_arena: &'v Bump,
     input: &'s str,
-) -> Result<Value<'v, 's>, ExecutionError<'v, 's>> {
+) -> Result<Value<'a, 's>, ExecutionError<'a, 's>> {
     let parsed =
         ast_arena.alloc(parser::parse(ast_arena, input).map_err(ExecutionError::ParseError)?);
-    let (evaluated, _) = interpreter::eval(value_arena, parsed, List::new())
-        .map_err(ExecutionError::RuntimeError)?;
+    let (evaluated, _) =
+        interpreter::eval(parsed, List::new()).map_err(ExecutionError::RuntimeError)?;
 
     Ok(evaluated)
 }

@@ -14,7 +14,7 @@ extern crate alloc;
 pub mod ast;
 pub mod scanner;
 
-pub fn parse<'a: 's, 's>(
+pub fn parse<'a, 's>(
     bump: &'a Bump,
     input: &'s str,
 ) -> Result<Spanned<'a, 's>, ParseError<usize, Token<'s>, scanner::Error>> {

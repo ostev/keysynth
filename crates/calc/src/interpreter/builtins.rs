@@ -1,6 +1,6 @@
 use core::f32;
 
-use bumpalo::collections::Vec;
+use alloc::vec::Vec;
 use micromath::F32Ext;
 use rpds::{HashTrieMap, ht_map};
 
@@ -10,7 +10,7 @@ use crate::{
     parser::ast::Span,
 };
 
-pub type BuiltinFunction = for<'v, 's> fn(Span, Vec<'v, Value<'v, 's>>) -> EvalResult<'v, 's>;
+pub type BuiltinFunction = for<'a, 's> fn(Span, Vec<Value<'a, 's>>) -> EvalResult<'a, 's>;
 
 #[derive(Clone, Copy)]
 pub enum BuiltinValue {
@@ -75,14 +75,14 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
 
 fn unary_numeric<'v, 's>(
     callsite: Span,
-    args: Vec<'v, Value<'v, 's>>,
+    args: Vec<Value<'v, 's>>,
     f: impl Fn(Span, f32) -> Result<f32, Error<'v, 's>>,
 ) -> EvalResult<'v, 's> {
     if args.len() == 1 {
-        let value = match args[0] {
-            Value::Number(number) => f(callsite, number).map(Value::Number),
+        let value = match &args[0] {
+            Value::Number(number) => f(callsite, *number).map(Value::Number),
             value => Err(Error::new(
-                ErrorKind::Expected(Type::Number, value),
+                ErrorKind::Expected(Type::Number, value.clone()),
                 callsite,
             )),
         }?;
@@ -99,18 +99,22 @@ fn unary_numeric<'v, 's>(
     }
 }
 
-fn binary_numeric<'v, 's>(
+fn binary_numeric<'a, 's>(
     callsite: Span,
-    args: Vec<'v, Value<'v, 's>>,
-    f: impl Fn(Span, f32, f32) -> Result<f32, Error<'v, 's>>,
-) -> EvalResult<'v, 's> {
+    args: Vec<Value<'a, 's>>,
+    f: impl Fn(Span, f32, f32) -> Result<f32, Error<'a, 's>>,
+) -> EvalResult<'a, 's> {
     if args.len() == 2 {
-        let value = match (args[0], args[1]) {
-            (Value::Number(x), Value::Number(y)) => f(callsite, x, y).map(Value::Number),
-            (Value::Number(_), y) => {
-                Err(Error::new(ErrorKind::Expected(Type::Number, y), callsite))
-            }
-            (x, _) => Err(Error::new(ErrorKind::Expected(Type::Number, x), callsite)),
+        let value = match (&args[0], &args[1]) {
+            (Value::Number(x), Value::Number(y)) => f(callsite, *x, *y).map(Value::Number),
+            (Value::Number(_), y) => Err(Error::new(
+                ErrorKind::Expected(Type::Number, y.clone()),
+                callsite,
+            )),
+            (x, _) => Err(Error::new(
+                ErrorKind::Expected(Type::Number, x.clone()),
+                callsite,
+            )),
         }?;
 
         Ok((value, rpds::List::new()))

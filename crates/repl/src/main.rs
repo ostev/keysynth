@@ -22,7 +22,7 @@ fn repl() -> rustyline::Result<()> {
                     let contents = fs::read_to_string(file_path)?;
 
                     {
-                        let value = calc::run(&ast_arena, &value_arena, &contents);
+                        let value = calc::run(&ast_arena, &contents);
                         match value {
                             Ok(value) => println!("{:?}", value),
                             Err(error) => println!("{:#?}", error),
@@ -34,7 +34,7 @@ fn repl() -> rustyline::Result<()> {
                 }
                 _ => {
                     {
-                        let value = calc::run(&ast_arena, &value_arena, &input);
+                        let value = calc::run(&ast_arena, &input);
                         match value {
                             Ok(value) => println!("{:?}", value),
                             Err(error) => println!("{:#?}", error),
