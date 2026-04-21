@@ -11,7 +11,6 @@ extern {
     type Error = scanner::Error;
 
     enum Token<'s> {
-        "\n" => Token::Newline,
         ";" => Token::Semicolon,
         ident => Token::Identifier(<&'s str>),
         num => Token::Number(<f32>),
@@ -123,6 +122,7 @@ ComparisonOp: ComparisonBinaryOp = {
 
 
 Num: f32 = {
+    "-" <x: num> => -x,
     num => (<>),
 };
 
@@ -131,7 +131,6 @@ Identifier: &'s str = {
 }
 
 AssignmentSeperator: () = {
-    "\n" => (),
     ";" => ()
 }
 
