@@ -52,8 +52,6 @@ fn main() -> ! {
     let ast_arena = Bump::new();
     let parsed = calc::parser::parse(&ast_arena, TEST_FILE).unwrap();
 
-    let mut value_arena = Bump::new();
-
     println!("Evaluating...");
 
     let start = clock.current_time_us();
@@ -62,16 +60,13 @@ fn main() -> ! {
         let value = {
             let outer_scope = list![ht_map!["x" => Value::Number(x)]];
 
-            let (dynamic_value, _) =
-                calc::interpreter::eval(&value_arena, &parsed, outer_scope).unwrap();
+            let (dynamic_value, _) = calc::interpreter::eval(&parsed, outer_scope).unwrap();
 
             match dynamic_value {
                 Value::Number(value) => value,
                 _ => panic!("Didn't return a number!"),
             }
         };
-
-        value_arena.reset();
 
         value
     });
