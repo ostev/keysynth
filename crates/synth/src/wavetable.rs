@@ -4,12 +4,12 @@ pub struct Wavetable<const S: usize> {
     samples: [f32; S],
 }
 
-pub const DEFAULT_SIZE: usize = 4096;
+pub const DEFAULT_SIZE: usize = 300;
 
 pub type DefaultWavetable = Wavetable<DEFAULT_SIZE>;
 
 impl<const S: usize> Wavetable<S> {
-    pub fn from_fn(generator: impl Fn(f32) -> f32) -> Self {
+    pub fn from_fn(mut generator: impl FnMut(f32) -> f32) -> Self {
         let phase_per_index = 2.0 * f32::consts::PI / S as f32;
         Self {
             samples: core::array::from_fn(|index| generator(phase_per_index * index as f32)),

@@ -16,24 +16,24 @@ pub enum PlayError {
     VoiceNotFound,
 }
 
-impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
-    pub fn note_on(&mut self, note: Note) {
-        let free_voice = self.voices.iter_mut().find(|voice| voice.is_active());
+// impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
+//     pub fn note_on(&mut self, note: Note) {
+//         let free_voice = self.voices.iter_mut().find(|voice| voice.is_active());
 
-        free_voice.note = Some(note);
+//         free_voice.note = Some(note);
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    pub fn note_off(&mut self, note: Note) -> Result<(), PlayError> {
-        let voice = self.voices.iter_mut().find(|voice| {
-            matches!(voice.note, Some(voice_note) if voice_note.frequency == note.frequency)
-        }).ok_or(PlayError::VoiceNotFound)?;
+//     pub fn note_off(&mut self, note: Note) -> Result<(), PlayError> {
+//         let voice = self.voices.iter_mut().find(|voice| {
+//             matches!(voice.note, Some(voice_note) if voice_note.frequency == note.frequency)
+//         }).ok_or(PlayError::VoiceNotFound)?;
 
-        voice.note = None;
+//         voice.note = None;
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    pub fn sample(&mut self) {}
-}
+//     pub fn sample(&mut self) {}
+// }
