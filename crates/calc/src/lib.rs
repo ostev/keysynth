@@ -16,6 +16,7 @@ use crate::{
 };
 extern crate alloc;
 
+mod diagonostics;
 pub mod interpreter;
 pub mod parser;
 mod peek_next;
@@ -30,7 +31,7 @@ lalrpop_mod!(
 #[derive(Debug)]
 pub enum ExecutionError<'v, 's> {
     ParseError(ParseError<usize, Token<'s>, scanner::Error>),
-    RuntimeError(interpreter::Error<'v, 's>),
+    RuntimeError(interpreter::diagnostics::Error<'v, 's>),
 }
 
 pub fn run<'a, 's: 'a>(
