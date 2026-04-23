@@ -505,7 +505,6 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                             } else if integer_part == 0.0 && base < 0.0 {
                                 Err(Error::new(
                                     ErrorKind::FractionalExponentWithNegativeBase {
-                                        span: left_expr.span(),
                                         base,
                                         exponent,
                                     },
