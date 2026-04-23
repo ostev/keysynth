@@ -3,7 +3,19 @@ use std::fs;
 use bumpalo::Bump;
 
 fn main() {
-    repl().unwrap();
+    let mut ast_arena = Bump::new();
+
+    loop {
+        {
+            calc::run(
+                &ast_arena,
+                "let f(x) => sqrt(x) * 3 + 5; g(x) => f(x) / 4 in f(x) * g(x)",
+            )
+            .unwrap();
+        }
+        ast_arena.reset();
+    }
+    // repl().unwrap();
 }
 
 fn repl() -> rustyline::Result<()> {

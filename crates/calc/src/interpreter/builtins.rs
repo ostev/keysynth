@@ -10,7 +10,7 @@ use crate::{
     parser::ast::Span,
 };
 
-pub type BuiltinFunction = for<'a, 's> fn(Span, Vec<Value<'a, 's>>) -> EvalResult<'a, 's>;
+pub type BuiltinFunction = for<'a, 's> fn(Span, Span, Vec<Value<'a, 's>>) -> EvalResult<'a, 's>;
 
 #[derive(Clone, Copy)]
 pub enum BuiltinValue {
@@ -43,31 +43,35 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
         "sqrt_2" => BuiltinValue::Number(f32::consts::SQRT_2),
         "recip_sqrt_2" => BuiltinValue::Number(f32::consts::FRAC_1_SQRT_2),
 
-        "sin" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, |_, value| Ok(value.sin()))
+        "sin" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, |_, value| Ok(value.sin()))
         }),
-        "cos" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, |_, value| Ok(value.cos()))
+        "cos" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, |_, value| Ok(value.cos()))
         }),
-        "tan" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, |_, value| Ok(value.tan()))
+        "tan" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, |_, value| Ok(value.tan()))
         }),
-        "asin" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, inverse_trig(f32::asin))
+        "asin" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, inverse_trig(f32::asin))
         }),
-        "acos" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, inverse_trig(f32::acos))
+        "acos" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, inverse_trig(f32::acos))
         }),
-        "atan" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, inverse_trig(f32::atan))
+        "atan" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, inverse_trig(f32::atan))
         }),
-        "sqrt" => {
-            BuiltinValue::Function(|callsite, args| unary_numeric(callsite, args, sqrt_number))
-        }
-        "cbrt" => BuiltinValue::Function(|callsite, args| {
-            unary_numeric(callsite, args, |_, value| Ok(cube_root(value)))
+        "sqrt" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, sqrt_number)
         }),
-        "root" => BuiltinValue::Function(|callsite, args| binary_numeric(callsite, args, nth_root)),
+        "cbrt" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, |_, value| {
+                Ok(cube_root(value))
+            })
+        }),
+        "root" => BuiltinValue::Function(|callsite, function_span, args| {
+            binary_numeric(callsite, function_span, args, nth_root)
+        }),
 
         _ => return None,
     })
@@ -75,6 +79,7 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
 
 fn unary_numeric<'v, 's>(
     callsite: Span,
+    function_span: Span,
     args: Vec<Value<'v, 's>>,
     f: impl Fn(Span, f32) -> Result<f32, Error<'v, 's>>,
 ) -> EvalResult<'v, 's> {
@@ -91,6 +96,7 @@ fn unary_numeric<'v, 's>(
     } else {
         Err(Error::new(
             ErrorKind::IncorrectArity {
+                function_span,
                 expected: 1,
                 received: args.len(),
             },
@@ -101,6 +107,7 @@ fn unary_numeric<'v, 's>(
 
 fn binary_numeric<'a, 's>(
     callsite: Span,
+    function_span: Span,
     args: Vec<Value<'a, 's>>,
     f: impl Fn(Span, f32, f32) -> Result<f32, Error<'a, 's>>,
 ) -> EvalResult<'a, 's> {
@@ -121,6 +128,7 @@ fn binary_numeric<'a, 's>(
     } else {
         Err(Error::new(
             ErrorKind::IncorrectArity {
+                function_span: function_span,
                 expected: 2,
                 received: args.len(),
             },
@@ -157,20 +165,20 @@ fn nth_root<'v, 's>(span: Span, n: f32, value: f32) -> Result<f32, Error<'v, 's>
                 Ok(sign as f32 * positive_root)
             } else {
                 Err(Error::new(
-                    ErrorKind::ArbitraryRootThatIsNotOddOfNegativeValue { root: n, value },
+                    ErrorKind::RootThatIsNotOddOfNegativeValue { root: n, value },
                     span,
                 ))
             }
         }
     } else {
-        Err(Error::new(ErrorKind::NegativeRoot { root: n, value }, span))
+        Err(Error::new(ErrorKind::InvalidRoot { root: n, value }, span))
     }
 }
 
 fn sqrt_number<'v, 's>(span: Span, value: f32) -> Result<f32, Error<'v, 's>> {
     if value < 0.0 {
         Err(Error::new(
-            ErrorKind::EvenRootOfNegativeValue { root: 2.0, value },
+            ErrorKind::RootThatIsNotOddOfNegativeValue { root: 2.0, value },
             span,
         ))
     } else {

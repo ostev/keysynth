@@ -11,3 +11,6 @@ bumpalo = { version = "3.20.2", features = ["collections", "boxed"] }
 micromath = "2.1.0"
 rpds = { version = "1.2.0", default-features = false }
 lalrpop-util = { version = "0.23.1", default-features = false }
+codespan-reporting = { version = "0.13.1", default-features = false, features = [
+    "ascii-only",
+] }
