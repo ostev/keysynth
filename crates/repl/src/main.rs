@@ -1,21 +1,15 @@
 use std::fs;
 
 use bumpalo::Bump;
+use calc::{ExecutionError, interpreter};
+use codespan_reporting::{
+    diagnostic::Diagnostic,
+    files::SimpleFile,
+    term::{self, WriteStyle},
+};
 
 fn main() {
-    let mut ast_arena = Bump::new();
-
-    loop {
-        {
-            calc::run(
-                &ast_arena,
-                "let f(x) => sqrt(x) * 3 + 5; g(x) => f(x) / 4 in f(x) * g(x)",
-            )
-            .unwrap();
-        }
-        ast_arena.reset();
-    }
-    // repl().unwrap();
+    repl().unwrap();
 }
 
 fn repl() -> rustyline::Result<()> {
@@ -29,27 +23,41 @@ fn repl() -> rustyline::Result<()> {
         match readline {
             Ok(input) => match input.as_str() {
                 ":exit" => break,
-                _ if input.starts_with(":run") => {
-                    let file_path = input[":run".len()..].trim();
-                    let contents = fs::read_to_string(file_path)?;
+                // _ if input.starts_with(":run") => {
+                //     let file_path = input[":run".len()..].trim();
+                //     let contents = fs::read_to_string(file_path)?;
 
-                    {
-                        let value = calc::run(&ast_arena, &contents);
-                        match value {
-                            Ok(value) => println!("{:?}", value),
-                            Err(error) => println!("{:#?}", error),
-                        }
-                    }
+                //     {
+                //         let value = calc::run(&contents);
+                //         match value {
+                //             Ok(value) => println!("{:?}", value),
+                //             Err(error) => println!("{:#?}", error),
+                //         }
+                //     }
 
-                    value_arena.reset();
-                    ast_arena.reset();
-                }
+                //     value_arena.reset();
+                //     ast_arena.reset();
+                // }
                 _ => {
                     {
-                        let value = calc::run(&ast_arena, &input);
-                        match value {
-                            Ok(value) => println!("{:?}", value),
-                            Err(error) => println!("{:#?}", error),
+                        // let value = calc::run(&input);
+                        match calc::parser::parse(&ast_arena, &input) {
+                            Ok(expr) => match calc::interpreter::eval_root(&expr) {
+                                Ok(value) => println!("{}", value),
+                                Err(error) => {
+                                    let diagnostic: Diagnostic<()> = error.into();
+                                    let text = term::emit_into_string(
+                                        &term::Config::default(),
+                                        &SimpleFile::new("repl", &input),
+                                        &diagnostic,
+                                    )
+                                    .unwrap();
+                                    println!("{}", text);
+                                }
+                            },
+                            Err(error) => {
+                                println!("{:#?}", error);
+                            }
                         }
                     }
 

@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 bumpalo = "3.20.2"
 "calc" = { path = "../calc" }
+codespan-reporting = "0.13.1"
 rustyline = "18.0.0"
