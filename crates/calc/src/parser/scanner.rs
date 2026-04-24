@@ -65,7 +65,7 @@ impl<'s> Scanner<'s> {
         Ok((index, token, index + length))
     }
 
-    fn make_identifier_or_keyword(&mut self, index: usize, length: usize) -> Spanned<'s> {
+    fn make_identifier_or_keyword(&self, index: usize, length: usize) -> Spanned<'s> {
         let text = &self.input[index..=index + length];
         let token = match text {
             "if" => Token::If,
