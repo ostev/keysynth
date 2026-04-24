@@ -87,6 +87,7 @@ Comma<T>: Vec<T> = {
         None => leading,
         Some(trailing) => {
             leading.push(trailing);
+            leading.reserve_exact(1);
             leading
         }
     }
@@ -144,6 +145,7 @@ Assignments: Vec<Assignment<'a, 's>> = {
         None => leading,
         Some(trailing) => {
             leading.push(trailing);
+            leading.reserve_exact(1);
             leading
         }
     }
