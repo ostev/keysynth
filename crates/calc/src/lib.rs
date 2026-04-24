@@ -2,13 +2,14 @@
 
 use core::f32;
 
-use bumpalo::Bump;
+use alloc::rc::Rc;
+use bumpalo::{Bump, boxed::Box};
 use lalrpop_util::{ParseError, lalrpop_mod};
 use micromath::F32Ext;
 use rpds::{HashTrieMap, List, ht_map};
 
 use crate::{
-    interpreter::{Error, ErrorKind, Value},
+    interpreter::{OwnedValue, Value},
     parser::{
         ast::Span,
         scanner::{self, Token},
@@ -16,7 +17,6 @@ use crate::{
 };
 extern crate alloc;
 
-mod diagonostics;
 pub mod interpreter;
 pub mod parser;
 mod peek_next;
@@ -29,19 +29,14 @@ lalrpop_mod!(
 );
 
 #[derive(Debug)]
-pub enum ExecutionError<'v, 's> {
+pub enum ExecutionError<'a, 's> {
     ParseError(ParseError<usize, Token<'s>, scanner::Error>),
-    RuntimeError(interpreter::diagnostics::Error<'v, 's>),
+    RuntimeError(interpreter::diagnostics::Error<'a, 's>),
 }
 
-pub fn run<'a, 's: 'a>(
-    ast_arena: &'a Bump,
-    input: &'s str,
-) -> Result<Value<'a, 's>, ExecutionError<'a, 's>> {
-    let parsed =
-        ast_arena.alloc(parser::parse(ast_arena, input).map_err(ExecutionError::ParseError)?);
-    let (evaluated, _) =
-        interpreter::eval(parsed, List::new()).map_err(ExecutionError::RuntimeError)?;
+// pub fn run<'s>(input: &'s str) -> Result<Option<OwnedValue>, ExecutionError<'_, 's>> {
+//     // let concrete = evaluated.as_concrete();
 
-    Ok(evaluated)
-}
+//     // Ok(concrete)
+//     Ok(None)
+// }

@@ -30,6 +30,35 @@ pub enum Value<'a, 's> {
     BuiltinFunction(BuiltinFunction),
 }
 
+impl<'a, 's> Value<'a, 's> {
+    pub fn to_number(self) -> Option<f32> {
+        match self {
+            Value::Number(num) => Some(num),
+            _ => None,
+        }
+    }
+    pub fn to_boolean(self) -> Option<bool> {
+        match self {
+            Value::Boolean(bool) => Some(bool),
+            _ => None,
+        }
+    }
+
+    pub fn as_concrete(&self) -> Option<OwnedValue> {
+        match self {
+            Value::Boolean(bool) => Some(OwnedValue::Boolean(*bool)),
+            Value::Number(num) => Some(OwnedValue::Number(*num)),
+            _ => None,
+        }
+    }
+}
+
+pub enum OwnedValue {
+    Number(f32),
+    Boolean(bool),
+    Function,
+}
+
 /// A closure (function value) is allocated as a reference-counted value on the heap and
 /// contains references to its surrounding scope. The scope will only be dropped when its
 /// reference count is zero, so it's important that drop will be run on [`FunctionValue`]
@@ -142,6 +171,11 @@ pub type Scopes<'a, 's> = rpds::List<rpds::HashTrieMap<&'s str, Value<'a, 's>>>;
 /// Represents the result of an interpreted expression, along with its scope.
 pub type EvalResult<'a, 's> = Result<(Value<'a, 's>, Scopes<'a, 's>), Error<'a, 's>>;
 
+pub fn eval_root<'a, 's>(spanned: &'a Spanned<'a, 's>) -> Result<Value<'a, 's>, Error<'a, 's>> {
+    let (value, _scopes) = eval(spanned, List::new())?;
+    Ok(value)
+}
+
 pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> EvalResult<'a, 's> {
     Ok(match &spanned.expr {
         Expr::Identifier(identifier) => {
@@ -240,7 +274,10 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
             let new_scope = assignments.iter().try_fold(
                 HashTrieMap::new(),
                 |mut accumulated_scope, assignment| {
-                    let (value, _) = eval(&assignment.expr, scopes.clone())?;
+                    let (value, _) = eval(
+                        &assignment.expr,
+                        scopes.push_front(accumulated_scope.clone()),
+                    )?;
 
                     accumulated_scope.insert_mut(assignment.identifier, value);
                     Ok(accumulated_scope)

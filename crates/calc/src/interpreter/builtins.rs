@@ -5,8 +5,11 @@ use micromath::F32Ext;
 use rpds::{HashTrieMap, ht_map};
 
 use crate::{
-    Error, ErrorKind, Value,
-    interpreter::{EvalResult, Type},
+    Value,
+    interpreter::{
+        EvalResult, Type,
+        diagnostics::{Error, ErrorKind},
+    },
     parser::ast::Span,
 };
 
