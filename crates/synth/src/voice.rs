@@ -1,21 +1,29 @@
-use crate::{note::Note, wavetable::Oscillator};
+use crate::{note, wavetable::Oscillator};
 
+#[derive(Clone, Copy)]
 pub struct Voice<'a, const S: usize> {
     osc_a: Oscillator<'a, S>,
     osc_b: Oscillator<'a, S>,
-    pub note: Note,
+    note: note::Event,
 }
 
-// impl<'a, const S: usize> Voice<'a, S> {
-//     pub fn sample(&mut self, blend: f32) -> f32 {
-//         match &self.note {
-//             None => 0.0,
-//             Some(note) => {
-//                 let a = self.osc_a.sample(note.frequency);
-//                 let b = self.osc_b.sample(note.frequency);
+impl<'a, const S: usize> Voice<'a, S> {
+    pub const fn new(
+        osc_a: Oscillator<'a, S>,
+        osc_b: Oscillator<'a, S>,
+        note: note::Event,
+    ) -> Self {
+        Self { osc_a, osc_b, note }
+    }
 
-//                 a * (1.0 - blend) + b * blend
-//             }
-//         }
-//     }
-// }
+    pub const fn sample(&mut self, blend: f32) -> f32 {
+        let a = self.osc_a.sample(self.note.note);
+        let b = self.osc_b.sample(self.note.note);
+
+        a * (1.0 - blend) + b * blend
+    }
+
+    pub const fn note(&self) -> note::Event {
+        self.note
+    }
+}
