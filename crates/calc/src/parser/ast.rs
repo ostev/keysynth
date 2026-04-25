@@ -73,6 +73,7 @@ pub struct Let<'a, 's> {
 pub enum BinaryOp {
     Numeric(NumericBinaryOp),
     Comparison(ComparisonBinaryOp),
+    Logical(LogicalBinaryOp),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -93,8 +94,17 @@ pub enum ComparisonBinaryOp {
     GreaterThan,
     GreaterThanOrEquals,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LogicalBinaryOp {
+    And,
+    Or,
+    Nor,
+    Nand,
+    Xor,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UnaryOpKind {
     Negate,
+    Not,
 }
