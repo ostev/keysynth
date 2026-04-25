@@ -56,7 +56,14 @@ fn repl() -> rustyline::Result<()> {
                                 }
                             },
                             Err(error) => {
-                                println!("{:#?}", error);
+                                let diagnostic: Diagnostic<()> = error.into();
+                                let text = term::emit_into_string(
+                                    &term::Config::default(),
+                                    &SimpleFile::new("repl", &input),
+                                    &diagnostic,
+                                )
+                                .unwrap();
+                                println!("{}", text);
                             }
                         }
                     }

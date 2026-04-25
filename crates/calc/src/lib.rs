@@ -30,8 +30,8 @@ lalrpop_mod!(
 
 #[derive(Debug)]
 pub enum ExecutionError<'a, 's> {
-    ParseError(ParseError<usize, Token<'s>, scanner::Error>),
-    RuntimeError(interpreter::diagnostics::Error<'a, 's>),
+    ParseError(ParseError<usize, Token<'s>, scanner::diagnostic::Error>),
+    RuntimeError(interpreter::diagnostic::Error<'a, 's>),
 }
 
 // pub fn run<'s>(input: &'s str) -> Result<Option<OwnedValue>, ExecutionError<'_, 's>> {

@@ -8,7 +8,7 @@ use crate::{
     Value,
     interpreter::{
         EvalResult, Type,
-        diagnostics::{Error, ErrorKind},
+        diagnostic::{Error, ErrorKind},
     },
     parser::ast::Span,
 };

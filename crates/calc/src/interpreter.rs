@@ -9,7 +9,7 @@ use rpds::{HashTrieMap, List};
 use crate::{
     interpreter::{
         builtins::{BuiltinFunction, BuiltinValue, get_builtin},
-        diagnostics::{Error, ErrorKind},
+        diagnostic::{Error, ErrorKind},
     },
     parser::ast::{
         BinaryOp, Branch, ComparisonBinaryOp, Expr, Let, Literal, NumericBinaryOp, Span, Spanned,
@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub mod builtins;
-pub mod diagnostics;
+pub mod diagnostic;
 
 /// Represents a calculator value at runtime, which is either a number,
 /// a boolean, a function or a builtin.

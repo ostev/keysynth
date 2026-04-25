@@ -1,10 +1,12 @@
+use codespan_reporting::diagnostic::Diagnostic;
+
 use crate::peek_next::{IteratorExt, PeekableNext};
+use core::fmt;
 use core::str::CharIndices;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {
-    UnexpectedCharacter { index: usize },
-}
+use diagnostic::Error;
+
+pub mod diagnostic;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'s> {
@@ -44,6 +46,41 @@ pub enum Token<'s> {
     // let ... in ...
     Let,
     In,
+}
+
+impl<'s> fmt::Display for Token<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Newline => write!(f, "newline"),
+            Token::Semicolon => write!(f, "`;`"),
+            Token::Identifier(name) => write!(f, "identifier `{name}`"),
+            Token::Number(number) => write!(f, "number `{number}`"),
+            Token::True => write!(f, "`true`"),
+            Token::False => write!(f, "`false`"),
+            Token::Fn => write!(f, "`fn`"),
+            Token::LeftParen => write!(f, "`(`"),
+            Token::RightParen => write!(f, "`)`"),
+            Token::Comma => write!(f, "`,`"),
+            Token::Arrow => write!(f, "`=>`"),
+            Token::Minus => write!(f, "`-`"),
+            Token::Plus => write!(f, "`+`"),
+            Token::Slash => write!(f, "`/`"),
+            Token::Star => write!(f, "`*`"),
+            Token::Caret => write!(f, "`^`"),
+            Token::Equal => write!(f, "`=`"),
+            Token::EqualEqual => write!(f, "`==`"),
+            Token::BangEqual => write!(f, "`!=`"),
+            Token::Greater => write!(f, "`>`"),
+            Token::GreaterEqual => write!(f, "`>=`"),
+            Token::Less => write!(f, "`<`"),
+            Token::LessEqual => write!(f, "`<=`"),
+            Token::If => write!(f, "`if`"),
+            Token::Then => write!(f, "`then`"),
+            Token::Else => write!(f, "`else`"),
+            Token::Let => write!(f, "`let`"),
+            Token::In => write!(f, "`in`"),
+        }
+    }
 }
 
 pub type Spanned<'s> = Result<(usize, Token<'s>, usize), Error>;

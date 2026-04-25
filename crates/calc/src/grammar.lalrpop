@@ -8,12 +8,12 @@ grammar<'s, 'a>(input: &'s str, bump: &'a Bump) where 's: 'a;
 
 extern {
     type Location = usize;
-    type Error = scanner::Error;
+    type Error = scanner::diagnostic::Error;
 
     enum Token<'s> {
         ";" => Token::Semicolon,
-        ident => Token::Identifier(<&'s str>),
-        num => Token::Number(<f32>),
+        identifier => Token::Identifier(<&'s str>),
+        number => Token::Number(<f32>),
         "true" => Token::True,
         "false" => Token::False,
         "(" => Token::LeftParen,
@@ -123,12 +123,12 @@ ComparisonOp: ComparisonBinaryOp = {
 
 
 Num: f32 = {
-    "-" <x: num> => -x,
-    num => (<>),
+    "-" <x: number> => -x,
+    number => (<>),
 };
 
 Identifier: &'s str = {
-    ident => (<>),
+    identifier => (<>),
 }
 
 AssignmentSeperator: () = {

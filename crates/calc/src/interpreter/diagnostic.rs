@@ -66,7 +66,7 @@ impl<'a, 's> Into<Diagnostic<()>> for Error<'a, 's> {
 
         match self.kind {
             ErrorKind::IdentifierNotInScope(identifier) => Diagnostic::error()
-                .with_code("E001")
+                .with_code("E201")
                 .with_label(primary.with_message("this variable is not in scope"))
                 .with_note(format!(
                     "I can't find a variable or function in scope called {identifier}! \

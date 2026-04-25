@@ -9,14 +9,16 @@ use crate::{
     },
 };
 
+use diagnostic::Error;
+
 extern crate alloc;
 
 pub mod ast;
+pub mod diagnostic;
 pub mod scanner;
 
-pub fn parse<'a, 's>(
-    bump: &'a Bump,
-    input: &'s str,
-) -> Result<Spanned<'a, 's>, ParseError<usize, Token<'s>, scanner::Error>> {
-    grammar::ExprParser::new().parse(input, bump, Scanner::new(input))
+pub fn parse<'a, 's>(bump: &'a Bump, input: &'s str) -> Result<Spanned<'a, 's>, Error<'s>> {
+    grammar::ExprParser::new()
+        .parse(input, bump, Scanner::new(input))
+        .map_err(Error)
 }
