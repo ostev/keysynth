@@ -23,24 +23,8 @@ fn repl() -> rustyline::Result<()> {
         match readline {
             Ok(input) => match input.as_str() {
                 ":exit" => break,
-                // _ if input.starts_with(":run") => {
-                //     let file_path = input[":run".len()..].trim();
-                //     let contents = fs::read_to_string(file_path)?;
-
-                //     {
-                //         let value = calc::run(&contents);
-                //         match value {
-                //             Ok(value) => println!("{:?}", value),
-                //             Err(error) => println!("{:#?}", error),
-                //         }
-                //     }
-
-                //     value_arena.reset();
-                //     ast_arena.reset();
-                // }
                 _ => {
                     {
-                        // let value = calc::run(&input);
                         match calc::parser::parse(&ast_arena, &input) {
                             Ok(expr) => match calc::interpreter::eval_root(&expr) {
                                 Ok(value) => println!("{}", value),

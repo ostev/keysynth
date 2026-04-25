@@ -565,10 +565,16 @@ dependencies = [
 name = "keyboard"
 version = "0.1.0"
 dependencies = [
+ "archery",
+ "bumpalo",
+ "calc",
+ "codespan-reporting",
  "cpal",
  "embedded-graphics",
  "embedded-graphics-simulator",
  "pitchy",
+ "rpds",
+ "rustyline",
  "smallvec",
  "synth",
 ]

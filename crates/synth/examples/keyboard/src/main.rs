@@ -3,6 +3,9 @@ use std::{
     time,
 };
 
+use bumpalo::Bump;
+use calc::interpreter::Value;
+use codespan_reporting::{diagnostic::Diagnostic, files::SimpleFile, term};
 use cpal::{
     Device, FromSample, SampleFormat, SizedSample, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -13,17 +16,61 @@ use embedded_graphics::{
     prelude::{Point, Primitive, Size},
     primitives::{Circle, PrimitiveStyle},
 };
+use rpds::{List, ht_map, list};
 use synth::{
     Synth,
     keyboard::{Key, Keyboard},
     note::{Event, Note},
-    wavetable::{self, DefaultWavetable},
+    wavetable::{self, DefaultWavetable, Wavetable},
 };
 
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
     sdl2::Keycode,
 };
+
+fn prompt_for_wavetable<const S: usize>() -> Option<Wavetable<S>> {
+    let mut rl = rustyline::DefaultEditor::new().unwrap();
+
+    let readline = rl.readline("> ");
+    let ast_arena = Bump::new();
+
+    match readline {
+        Ok(input) => match calc::parser::parse(&ast_arena, &input) {
+            Ok(expr) => {
+                let table = Wavetable::from_fn(|x| {
+                    let value = {
+                        let outer_scope = list![ht_map!["x" => Value::Number(x)]];
+
+                        let (dynamic_value, _) =
+                            calc::interpreter::eval(&expr, outer_scope).unwrap();
+
+                        match dynamic_value {
+                            Value::Number(value) => value,
+                            _ => panic!("Didn't return a number!"),
+                        }
+                    };
+
+                    value
+                });
+
+                Some(table)
+            }
+            Err(error) => {
+                let diagnostic: Diagnostic<()> = error.into();
+                let text = term::emit_into_string(
+                    &term::Config::default(),
+                    &SimpleFile::new("repl", &input),
+                    &diagnostic,
+                )
+                .unwrap();
+                println!("{}", text);
+                None
+            }
+        },
+        Err(_) => None,
+    }
+}
 
 fn main() {
     let host = cpal::default_host();
@@ -37,7 +84,7 @@ fn main() {
     let config: StreamConfig = output_config.into();
 
     // The audio callback requires 'static captures, so keep the wavetable alive for process lifetime.
-    let table: &'static DefaultWavetable = Box::leak(Box::new(DefaultWavetable::from_fn(f32::sin)));
+    let table: &'static DefaultWavetable = Box::leak(Box::new(prompt_for_wavetable().unwrap()));
 
     let mut display = SimulatorDisplay::<BinaryColor>::new(Size::new(128, 64));
     {
