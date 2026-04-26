@@ -124,6 +124,7 @@ dependencies = [
  "itertools",
  "lalrpop",
  "lalrpop-util",
+ "libm",
  "micromath",
  "rpds",
 ]

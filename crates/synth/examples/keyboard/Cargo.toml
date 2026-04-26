@@ -17,3 +17,4 @@ calc = { path = "../../../calc" }
 codespan-reporting = "0.13.1"
 rpds = "1.2.0"
 archery = "1.2.2"
+hound = "3.5.1"

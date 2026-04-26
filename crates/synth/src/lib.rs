@@ -72,7 +72,7 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         let active_voices = self.voices.iter_mut().filter_map(Option::as_mut);
 
         let (sum, count) = active_voices
-            .map(|voice| voice.sample(0.5))
+            .map(|voice| voice.sample(0.0))
             .fold((0.0, 0usize), |(sum, count), sample| {
                 (sum + sample, count + 1)
             });

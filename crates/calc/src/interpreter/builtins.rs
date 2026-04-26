@@ -47,7 +47,9 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
         "recip_sqrt_2" => BuiltinValue::Number(f32::consts::FRAC_1_SQRT_2),
 
         "sin" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, |_, value| Ok(value.sin()))
+            unary_numeric(callsite, function_span, args, |_, value| {
+                Ok(libm::sinf(value))
+            })
         }),
         "cos" => BuiltinValue::Function(|callsite, function_span, args| {
             unary_numeric(callsite, function_span, args, |_, value| Ok(value.cos()))
