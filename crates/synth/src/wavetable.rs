@@ -23,5 +23,3 @@ impl<const S: usize> Wavetable<S> {
         Self { samples }
     }
 }
-
-pub const DEFAULT_SAMPLE_RATE: f32 = 44_100.0;

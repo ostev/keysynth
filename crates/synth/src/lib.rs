@@ -1,7 +1,7 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 use crate::{
-    asdr::Envelope,
+    adsr::Envelope,
     filters::vcf::Vcf,
     note::{Event, Note},
     oscillator::WavetableOscillator,
@@ -9,8 +9,8 @@ use crate::{
     wavetable::Wavetable,
 };
 
+pub mod adsr;
 mod arena;
-pub mod asdr;
 mod filters;
 pub mod keyboard;
 mod math;
@@ -18,6 +18,8 @@ pub mod note;
 pub mod oscillator;
 mod voice;
 pub mod wavetable;
+
+pub const DEFAULT_SAMPLE_RATE: u32 = 44_100;
 
 pub struct Synth<'a, const N: usize, const S: usize> {
     wavetables: [&'a Wavetable<S>; 2],
@@ -124,6 +126,17 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         self.vcf
             .sample(output, self.cutoff, self.resonance)
             .clamp(0.0, 1.0)
-        // output
+    }
+
+    pub fn sample_into(&mut self, buffer: &mut [f32]) {
+        for sample in buffer.iter_mut() {
+            *sample = self.sample();
+        }
+    }
+
+    pub fn sample_many<const BUFFER_SIZE: usize>(&mut self) -> [f32; BUFFER_SIZE] {
+        let mut buffer = [0.0; BUFFER_SIZE];
+        self.sample_into(&mut buffer);
+        buffer
     }
 }

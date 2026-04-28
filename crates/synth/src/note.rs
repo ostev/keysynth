@@ -1,5 +1,7 @@
 use libm::powf;
 
+pub(crate) mod estimation;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Event {
     pub note: Note,

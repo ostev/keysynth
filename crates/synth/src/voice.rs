@@ -1,5 +1,5 @@
 use crate::{
-    asdr::{Adsr, Envelope},
+    adsr::{Adsr, Envelope},
     note,
     oscillator::WavetableOscillator,
 };
