@@ -12,7 +12,7 @@ impl Default for Envelope {
             attack: 0.02,
             decay: 0.1,
             sustain: 0.8,
-            release: 0.1,
+            release: 0.9,
         }
     }
 }

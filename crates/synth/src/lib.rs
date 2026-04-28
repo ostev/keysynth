@@ -29,6 +29,8 @@ pub struct Synth<'a, const N: usize, const S: usize> {
 
     cutoff: f32,
     resonance: f32,
+
+    envelope: Envelope,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -41,11 +43,17 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
     pub const fn new(sample_rate: f32, wavetables: [&'a Wavetable<S>; 2]) -> Self {
         Self {
             wavetables,
-            voices: [None; N],
+            voices: [const { None }; N],
             vcf: Vcf::new(),
             sample_rate,
             cutoff: 0.1,
             resonance: 0.2,
+            envelope: Envelope {
+                attack: 2.0,
+                decay: 0.8,
+                sustain: 0.9,
+                release: 0.2,
+            },
         }
     }
 
@@ -59,12 +67,7 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
                     WavetableOscillator::new(self.wavetables[0], self.sample_rate),
                     WavetableOscillator::new(self.wavetables[1], self.sample_rate),
                     note,
-                    Envelope {
-                        attack: 2.0,
-                        decay: 0.8,
-                        sustain: 0.9,
-                        release: 8.0,
-                    },
+                    self.envelope,
                 ));
 
                 Ok(())
@@ -77,13 +80,18 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         let voice = self
             .voices
             .iter_mut()
-            .find(|voice| match voice {
-                Some(voice) => voice.note().note == note,
-                None => false,
+            .find_map(|voice| {
+                voice.as_mut().and_then(|voice| {
+                    if voice.note().note == note {
+                        Some(voice)
+                    } else {
+                        None
+                    }
+                })
             })
             .ok_or(PlayError::NoMatchingVoice)?;
 
-        *voice = None;
+        voice.release();
 
         Ok(())
     }

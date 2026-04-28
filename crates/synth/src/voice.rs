@@ -4,7 +4,7 @@ use crate::{
     oscillator::WavetableOscillator,
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Voice<'a, const S: usize> {
     osc_a: WavetableOscillator<'a, S>,
     osc_b: WavetableOscillator<'a, S>,

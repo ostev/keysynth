@@ -1,0 +1,81 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug unit tests in library 'synth'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=synth"
+                ]
+            }
+        },
+        {
+            "name": "Debug executable 'keyboard'",
+            "type": "lldb",
+            "request": "launch",
+            "terminal": "external",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin=keyboard",
+                    "--package=keyboard"
+                ]
+            },
+            "args": []
+        },
+        {
+            "name": "Debug unit tests in executable 'keyboard'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin=keyboard",
+                    "--package=keyboard"
+                ]
+            }
+        },
+        {
+            "name": "Debug unit tests in library 'calc'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=calc"
+                ]
+            }
+        },
+        {
+            "name": "Debug executable 'repl'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin=repl",
+                    "--package=repl"
+                ]
+            },
+            "args": []
+        },
+        {
+            "name": "Debug unit tests in executable 'repl'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin=repl",
+                    "--package=repl"
+                ]
+            }
+        }
+    ]
+}
