@@ -1,15 +1,21 @@
 #![no_std]
 
 use crate::{
+    asdr::Envelope,
+    filters::vcf::Vcf,
     note::{Event, Note},
+    oscillator::WavetableOscillator,
     voice::Voice,
-    wavetable::{Oscillator, Wavetable},
+    wavetable::Wavetable,
 };
 
 mod arena;
+pub mod asdr;
+mod filters;
 pub mod keyboard;
 mod math;
 pub mod note;
+pub mod oscillator;
 mod voice;
 pub mod wavetable;
 
@@ -18,7 +24,11 @@ pub struct Synth<'a, const N: usize, const S: usize> {
 
     voices: [Option<Voice<'a, S>>; N],
 
+    vcf: Vcf,
     sample_rate: f32,
+
+    cutoff: f32,
+    resonance: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -32,7 +42,10 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         Self {
             wavetables,
             voices: [None; N],
+            vcf: Vcf::new(),
             sample_rate,
+            cutoff: 0.1,
+            resonance: 0.2,
         }
     }
 
@@ -42,9 +55,16 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         match free_voice {
             Some(voice) => {
                 *voice = Some(Voice::new(
-                    Oscillator::new(self.wavetables[0], self.sample_rate),
-                    Oscillator::new(self.wavetables[1], self.sample_rate),
+                    self.sample_rate,
+                    WavetableOscillator::new(self.wavetables[0], self.sample_rate),
+                    WavetableOscillator::new(self.wavetables[1], self.sample_rate),
                     note,
+                    Envelope {
+                        attack: 2.0,
+                        decay: 0.8,
+                        sustain: 0.9,
+                        release: 8.0,
+                    },
                 ));
 
                 Ok(())
@@ -69,14 +89,33 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
     }
 
     pub fn sample(&mut self) -> f32 {
-        let active_voices = self.voices.iter_mut().filter_map(Option::as_mut);
-
-        let (sum, count) = active_voices
-            .map(|voice| voice.sample(0.0))
+        let (sum, count) = self
+            .voices
+            .iter_mut()
+            .filter_map(|option_voice| match option_voice {
+                Some(voice) => {
+                    if voice.is_ended() {
+                        *option_voice = None;
+                        None
+                    } else {
+                        Some(voice.sample(0.0))
+                    }
+                }
+                None => None,
+            })
             .fold((0.0, 0usize), |(sum, count), sample| {
                 (sum + sample, count + 1)
             });
 
-        sum / (count as f32)
+        let output = if count == 0 {
+            0.0
+        } else {
+            (sum / (count as f32)).clamp(0.0, 1.0)
+        };
+
+        self.vcf
+            .sample(output, self.cutoff, self.resonance)
+            .clamp(0.0, 1.0)
+        // output
     }
 }

@@ -1,4 +1,4 @@
-use core::f32;
+use core::{arch::aarch64::vabdd_f64, f32};
 
 use alloc::vec::Vec;
 use micromath::F32Ext;
@@ -52,19 +52,23 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
             })
         }),
         "cos" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, |_, value| Ok(value.cos()))
+            unary_numeric(callsite, function_span, args, |_, value| {
+                Ok(libm::cosf(value))
+            })
         }),
         "tan" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, |_, value| Ok(value.tan()))
+            unary_numeric(callsite, function_span, args, |_, value| {
+                Ok(libm::tanf(value))
+            })
         }),
         "asin" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, inverse_trig(f32::asin))
+            unary_numeric(callsite, function_span, args, inverse_trig(libm::asinf))
         }),
         "acos" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, inverse_trig(f32::acos))
+            unary_numeric(callsite, function_span, args, inverse_trig(libm::acosf))
         }),
         "atan" => BuiltinValue::Function(|callsite, function_span, args| {
-            unary_numeric(callsite, function_span, args, inverse_trig(f32::atan))
+            unary_numeric(callsite, function_span, args, inverse_trig(libm::atanf))
         }),
         "sqrt" => BuiltinValue::Function(|callsite, function_span, args| {
             unary_numeric(callsite, function_span, args, sqrt_number)
@@ -148,10 +152,11 @@ const fn negative_one_pow(exponent: i32) -> i32 {
 }
 
 fn cube_root(value: f32) -> f32 {
-    let positive_root = value.abs().powf(1.0 / 3.0);
-    let sign = (-1 as isize).pow(3);
+    // let positive_root = value.abs().powf(1.0 / 3.0);
+    // let sign = (-1 as isize).pow(3);
 
-    sign as f32 * positive_root
+    // sign as f32 * positive_root
+    libm::cbrtf(value)
 }
 
 fn nth_root<'v, 's>(span: Span, n: f32, value: f32) -> Result<f32, Error<'v, 's>> {
@@ -164,7 +169,7 @@ fn nth_root<'v, 's>(span: Span, n: f32, value: f32) -> Result<f32, Error<'v, 's>
             if truncated_n == n && integer_n % 2 != 0 {
                 // The root is an odd, whole number, so we handle the sign
                 // ourselves
-                let positive_root = value.abs().powf(1.0 / n);
+                let positive_root = libm::powf(value.abs(), (1.0 / n));
                 let sign = negative_one_pow(integer_n);
 
                 Ok(sign as f32 * positive_root)
@@ -187,7 +192,7 @@ fn sqrt_number<'v, 's>(span: Span, value: f32) -> Result<f32, Error<'v, 's>> {
             span,
         ))
     } else {
-        Ok(value.sqrt())
+        Ok(libm::sqrtf(value))
     }
 }
 

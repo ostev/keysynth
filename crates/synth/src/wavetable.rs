@@ -2,8 +2,9 @@ use core::f32;
 
 use crate::note::Note;
 
+#[derive(Clone, Debug)]
 pub struct Wavetable<const S: usize> {
-    samples: [f32; S],
+    pub samples: [f32; S],
 }
 
 pub const DEFAULT_SIZE: usize = 2048;
@@ -24,40 +25,3 @@ impl<const S: usize> Wavetable<S> {
 }
 
 pub const DEFAULT_SAMPLE_RATE: f32 = 44_100.0;
-
-#[derive(Clone, Copy)]
-pub struct Oscillator<'a, const S: usize> {
-    sample_rate_reciprocal: f32,
-    wavetable: &'a Wavetable<S>,
-    index: f32,
-}
-
-impl<'a, const S: usize> Oscillator<'a, S> {
-    pub const fn new(wavetable: &'a Wavetable<S>, sample_rate: f32) -> Self {
-        Oscillator {
-            wavetable,
-            sample_rate_reciprocal: 1.0 / sample_rate,
-            index: 0.0,
-        }
-    }
-
-    pub const fn sample(&mut self, note: Note) -> f32 {
-        let increment =
-            note.frequency * self.wavetable.samples.len() as f32 * self.sample_rate_reciprocal;
-        let sample = self.lerp();
-        self.index += increment;
-        self.index %= self.wavetable.samples.len() as f32;
-
-        sample
-    }
-
-    const fn lerp(&self) -> f32 {
-        let truncated_index = self.index as usize;
-        let next_index = (truncated_index + 1) % self.wavetable.samples.len();
-
-        let weight = self.index - self.index as usize as f32;
-
-        (1.0 - weight) * self.wavetable.samples[truncated_index]
-            + weight * self.wavetable.samples[next_index]
-    }
-}

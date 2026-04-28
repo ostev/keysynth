@@ -98,7 +98,25 @@ fn main() {
         let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
         synth
             .note_on(note::Event {
-                note: Note::C1,
+                note: Note::C3,
+                timestamp: 0,
+            })
+            .unwrap();
+        synth
+            .note_on(note::Event {
+                note: Note::C4,
+                timestamp: 0,
+            })
+            .unwrap();
+        synth
+            .note_on(note::Event {
+                note: Note::A4,
+                timestamp: 0,
+            })
+            .unwrap();
+        synth
+            .note_on(note::Event {
+                note: Note::C5,
                 timestamp: 0,
             })
             .unwrap();

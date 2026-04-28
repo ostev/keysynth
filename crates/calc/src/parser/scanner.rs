@@ -252,7 +252,7 @@ impl<'s> Iterator for Scanner<'s> {
             }
             _ => {
                 if char.is_ascii_digit() {
-                    let count = self.count_matching(char::is_ascii_digit);
+                    let count = self.count_matching(|char| char.is_ascii_digit() || *char == '.');
                     let text = &self.input[index..=index + count];
                     Self::make_spanned(Token::Number(text.parse().unwrap()), index, count)
                 } else if char.is_ascii_alphabetic() || char == '_' {
