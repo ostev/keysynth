@@ -299,7 +299,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                             let dividend = x;
                             let divisor = y;
 
-                            match dividend {
+                            match divisor {
                                 0.0 => Err(Error::new(
                                     ErrorKind::DivisionByZero(right_expr.span()),
                                     right_expr.span(),

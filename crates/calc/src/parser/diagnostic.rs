@@ -15,7 +15,7 @@ fn join_tokens(tokens: &Vec<String>) -> String {
     tokens
         .split_last()
         .map(|(last, rest)| match rest.len() {
-            1 => last.clone(),
+            0 => last.clone(),
             _ => format!("{} or {}", rest.join(", "), last),
         })
         .unwrap_or(String::new())
