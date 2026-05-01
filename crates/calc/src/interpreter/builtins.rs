@@ -27,7 +27,7 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
         "pi" => BuiltinValue::Number(f32::consts::PI),
         "tau" => BuiltinValue::Number(f32::consts::TAU),
 
-        // "two_pi" => BuiltinValue::Number(f32::consts::PI * 2.0),
+        "two_pi" => BuiltinValue::Number(f32::consts::PI * 2.0),
         "half_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_2),
         "third_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_3),
         "quarter_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_4),
