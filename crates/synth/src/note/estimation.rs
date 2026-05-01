@@ -28,35 +28,32 @@ impl<'a> PitchEstimator<'a> {
     }
 
     pub fn estimate_period(&self, max_lag: usize) -> f32 {
-        let asdfs = (0..max_lag).map(|lag| (lag, self.asdf(lag)));
-
-        // The period is the minimum of the ASDF graph within the sample window
-        // let (period, _) =
-        //     asdfs.fold(
-        //         (false, 0.0, 0, f32::INFINITY),
-        //         |(has_passed_first_max, gradient, lag, smallest_asdf), (new_lag, new_asdf)| {
-        //             let new_gradient = new_asdf
-        //             if new_asdf < smallest_asdf {
-        //                 (new_lag, new_asdf)
-        //             } else {
-        //                 (lag, smallest_asdf)
-        //             }
-        //         },
-        //     )
-        // // Since you can't initialise a `PitchEstimator` with an empty buffer, this
-        // // *should* be safe (unless the caller is doing something else that's UB).
-        // .unwrap_unchecked()
-        // ;
-
+        // Whether the graph has passed its first maximum stationary point
         let mut has_passed_first_max = false;
+        // The current gradient of the graph. Used to determine whether the
+        // graph has passed its first maximum stationary point (gradient changes
+        // sign from positive to negative).
         let mut gradient: f32 = 0.0;
-        let mut lag_with_smallest_asdf = (0, f32::INFINITY);
+        // The smallest ASDF found so far. Used to determine
+        // the global minimum within the sample window.
+        let mut smallest_asdf = f32::INFINITY;
+        // The lag value whether the smallest ASDF occured.
+        let mut lag_for_smallest_asdf: usize = 0;
+        // The calculated ASDF of the previous sample. Used to calculate the
+        // gradient
         let mut previous_asdf: f32 = 0.0;
 
-        for (lag, asdf) in asdfs {
+        // The period is the minimum of the ASDF graph within the sample window
+        // *after* the first maximum stationary point.
+        for lag in 0..max_lag {
+            let asdf = self.asdf(lag);
+
             if has_passed_first_max || {
                 let new_gradient = asdf - previous_asdf;
 
+                // Has the sign of the gradient changed from positive to negative?
+                // If so, we just crossed a maximum stationary point in between this
+                // sample and the previous.
                 has_passed_first_max =
                     gradient.is_sign_positive() && new_gradient.is_sign_negative();
 
@@ -64,17 +61,18 @@ impl<'a> PitchEstimator<'a> {
 
                 has_passed_first_max
             } {
-                if asdf < lag_with_smallest_asdf.1 {
-                    lag_with_smallest_asdf = (lag, asdf)
+                if asdf < smallest_asdf {
+                    smallest_asdf = asdf;
+                    lag_for_smallest_asdf = lag;
                 }
             }
 
             previous_asdf = asdf;
         }
 
-        let (period, min_asdf) = lag_with_smallest_asdf;
-        let asdf_before = self.asdf(period - 2);
-        let asdf_after = self.asdf(period + 2);
+        let period = lag_for_smallest_asdf;
+        // let asdf_before = self.asdf(period - 2);
+        // let asdf_after = self.asdf(period + 2);
 
         // let p1 = (asdf_before - min_asdf);
         // let p2 = asdf_after - min_asdf;
