@@ -104,18 +104,18 @@ fn main() {
     let keyboard = Keyboard::new((0, 0), (10, 4)).unwrap();
     let base = Note::C3;
 
-    let synth: Arc<Mutex<Synth<'static, 8, { wavetable::DEFAULT_SIZE }>>> =
+    let synth: Arc<Mutex<Synth<'static, 5, { wavetable::DEFAULT_SIZE }>>> =
         Arc::new(Mutex::new(Synth::new(sample_rate, [table, table])));
 
     let stream = match sample_format {
         SampleFormat::F32 => {
-            make_stream::<f32, 8, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
+            make_stream::<f32, 5, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
         }
         SampleFormat::I16 => {
-            make_stream::<i16, 8, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
+            make_stream::<i16, 5, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
         }
         SampleFormat::U16 => {
-            make_stream::<u16, 8, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
+            make_stream::<u16, 5, { wavetable::DEFAULT_SIZE }>(Arc::clone(&synth), &device, &config)
         }
         _ => panic!("Unsupported sample format: {sample_format:?}"),
     };

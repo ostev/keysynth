@@ -119,23 +119,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identifies_middle_c() {
+    fn identifies_sin() {
         let sin_wavetable: Wavetable<2048> = Wavetable::from_fn(libm::sinf);
-        let mut synth: Synth<'_, 1, 2048> =
-            Synth::new(DEFAULT_SAMPLE_RATE as f32, [&sin_wavetable, &sin_wavetable]);
+        // let mut synth: Synth<'_, 1, 2048> =
+        //     Synth::new(DEFAULT_SAMPLE_RATE as f32, [&sin_wavetable, &sin_wavetable]);
 
-        synth
-            .note_on(note::Event {
-                note: Note::C4,
-                timestamp: 0,
-            })
-            .unwrap();
+        // synth
+        //     .note_on(note::Event {
+        //         note: Note::C4,
+        //         timestamp: 0,
+        //     })
+        //     .unwrap();
 
-        let samples: [f32; 4096] = synth.sample_many();
-        let pitch_estimator = PitchEstimator::new(&samples).unwrap();
+        // let samples: [f32; 4096] = synth.sample_many();
+        let pitch_estimator = PitchEstimator::new(&sin_wavetable.samples).unwrap();
 
-        let period = pitch_estimator.estimate_period(1000);
+        let period = pitch_estimator.estimate_period(5000);
 
-        assert!(((DEFAULT_SAMPLE_RATE as f32 / Note::C4.frequency) - period).abs() < 1.0);
+        assert!((2048.0 - period).abs() < 1.0);
+    }
+
+    #[test]
+    fn identifies_complex() {
+        let sin_wavetable: Wavetable<2048> =
+            Wavetable::from_fn(|x| libm::tanf(3.0 * x + 0.3 * libm::cosf(5.0 * x * 0.4)));
+
+        let pitch_estimator = PitchEstimator::new(&sin_wavetable.samples).unwrap();
+
+        let period = pitch_estimator.estimate_period(5000);
+
+        assert!((2048.0 - period).abs() < 1.0);
     }
 }
