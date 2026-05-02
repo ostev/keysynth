@@ -32,6 +32,8 @@ pub struct Synth<'a, const N: usize, const S: usize> {
     cutoff: f32,
     resonance: f32,
 
+    voice_gain: f32,
+
     envelope: Envelope,
 }
 
@@ -50,6 +52,7 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
             sample_rate,
             cutoff: 0.4,
             resonance: 0.2,
+            voice_gain: 1.0 / (N as f32),
             envelope: Envelope {
                 attack: 1.0,
                 decay: 0.9,
@@ -120,7 +123,7 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
         let output = if count == 0 {
             0.0
         } else {
-            (sum / (count as f32)).clamp(0.0, 1.0)
+            (sum * self.voice_gain).clamp(0.0, 1.0)
         };
 
         self.vcf
