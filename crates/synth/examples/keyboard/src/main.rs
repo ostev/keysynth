@@ -86,47 +86,6 @@ fn main() {
     // The audio callback requires 'static captures, so keep the wavetable alive for process lifetime.
     let table: &'static DefaultWavetable = Box::leak(Box::new(prompt_for_wavetable().unwrap()));
 
-    {
-        let spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 44100,
-            bits_per_sample: 32,
-            sample_format: hound::SampleFormat::Float,
-        };
-
-        let mut synth: Synth<'_, 8, 2048> = Synth::new(sample_rate, [table, table]);
-        let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
-        synth
-            .note_on(note::Event {
-                note: Note::C3,
-                timestamp: 0,
-            })
-            .unwrap();
-        synth
-            .note_on(note::Event {
-                note: Note::C4,
-                timestamp: 0,
-            })
-            .unwrap();
-        synth
-            .note_on(note::Event {
-                note: Note::A4,
-                timestamp: 0,
-            })
-            .unwrap();
-        synth
-            .note_on(note::Event {
-                note: Note::C5,
-                timestamp: 0,
-            })
-            .unwrap();
-        for _ in 0..(44100 * 3) {
-            writer.write_sample(synth.sample()).unwrap();
-        }
-
-        writer.finalize().unwrap();
-    }
-
     let mut display = SimulatorDisplay::<BinaryColor>::new(Size::new(128, 64));
     {
         let line_style = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
@@ -219,6 +178,15 @@ where
     let num_channels = config.channels as usize;
     let synth_for_callback = synth.clone();
 
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44100,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+
+    let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
+
     device
         .build_output_stream(
             config,
@@ -228,6 +196,8 @@ where
                     for sample in frame {
                         *sample = T::from_sample(value);
                     }
+
+                    writer.write_sample(value).unwrap();
                 }
             },
             |err| eprintln!("Error building output sound stream: {err}"),

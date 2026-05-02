@@ -14,14 +14,14 @@ pub struct Vcf {
 impl Vcf {
     pub const fn new() -> Vcf {
         Vcf {
-            in1: 1.0,
-            in2: 1.0,
-            in3: 1.0,
-            in4: 1.0,
-            out1: 1.0,
-            out2: 1.0,
-            out3: 1.0,
-            out4: 1.0,
+            in1: 0.0,
+            in2: 0.0,
+            in3: 0.0,
+            in4: 0.0,
+            out1: 0.0,
+            out2: 0.0,
+            out3: 0.0,
+            out4: 0.0,
         }
     }
 

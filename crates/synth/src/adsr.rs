@@ -1,3 +1,5 @@
+use micromath::F32Ext;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Envelope {
     pub attack: f32,
@@ -17,48 +19,77 @@ impl Default for Envelope {
     }
 }
 
-impl Envelope {
-    const fn into_samples(self, sample_rate: f32) -> SamplesEnvelope {
-        let attack = self.attack * sample_rate;
-        let decay = self.decay * sample_rate;
-        let release = self.release * sample_rate;
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SamplesEnvelope {
+    attack_rate: f32,
+    attack_coefficient: f32,
+    attack_base: f32,
+
+    decay_rate: f32,
+    decay_coefficient: f32,
+    decay_base: f32,
+
+    release_rate: f32,
+    release_coefficient: f32,
+    release_base: f32,
+
+    sustain_level: f32,
+}
+impl SamplesEnvelope {
+    fn calculate_coefficient(rate: f32, target_ratio: f32) -> f32 {
+        if rate > 0.0 {
+            ((-((target_ratio + 1.0) / target_ratio).ln()) / rate).exp()
+        } else {
+            0.0
+        }
+    }
+
+    fn new(envelope: Envelope, sample_rate: f32, target_ratios: TargetRatios) -> SamplesEnvelope {
+        let attack_rate = envelope.attack * sample_rate;
+        let attack_coefficient = Self::calculate_coefficient(attack_rate, target_ratios.attack);
+        let attack_base = (1.0 + target_ratios.attack) * (1.0 - attack_coefficient);
+
+        let decay_rate = envelope.decay * sample_rate;
+        let decay_coefficient =
+            Self::calculate_coefficient(decay_rate, target_ratios.decay_release);
+        let decay_base =
+            (envelope.sustain - target_ratios.decay_release) * (1.0 - decay_coefficient);
+
+        let release_rate = envelope.release * sample_rate;
+        let release_coefficient =
+            Self::calculate_coefficient(release_rate, target_ratios.decay_release);
+        let release_base = -target_ratios.decay_release * (1.0 - release_coefficient);
 
         SamplesEnvelope {
-            attack_samples: attack,
-            attack_reciprocal: attack.recip(),
+            attack_rate,
+            attack_coefficient,
+            attack_base,
 
-            decay_samples: decay,
-            decay_reciprocal: decay.recip(),
+            decay_rate,
+            decay_coefficient,
+            decay_base,
 
-            sustain: self.sustain,
+            release_rate,
+            release_coefficient,
+            release_base,
 
-            release_samples: release,
-            release_reciprocal: release.recip(),
+            sustain_level: envelope.sustain,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct SamplesEnvelope {
-    attack_samples: f32,
-    attack_reciprocal: f32, // We store reciprocals to avoid division later
-
-    decay_samples: f32,
-    decay_reciprocal: f32,
-
-    sustain: f32,
-
-    release_samples: f32,
-    release_reciprocal: f32,
+pub struct TargetRatios {
+    pub attack: f32,
+    pub decay_release: f32,
 }
 
-/// States that need keep track of time by samples since start
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
-    Attack(f32),
-    Decay(f32),
+    Attack,
+    Decay,
     Sustain,
-    Release(f32),
+    Release,
     Ended,
 }
 
@@ -66,23 +97,27 @@ enum State {
 pub struct Adsr {
     envelope: SamplesEnvelope,
     state: State,
+    sample_rate: f32,
+    output: f32,
 }
 
 impl Adsr {
-    pub const fn new(sample_rate: f32, envelope: Envelope) -> Adsr {
+    pub fn new(sample_rate: f32, envelope: Envelope, target_ratios: TargetRatios) -> Adsr {
         Adsr {
-            envelope: envelope.into_samples(sample_rate),
-            state: State::Attack(0.0),
+            sample_rate,
+            envelope: SamplesEnvelope::new(envelope, sample_rate, target_ratios),
+            state: State::Attack,
+            output: 0.0,
         }
     }
 
-    pub const fn set_envelope(&mut self, sample_rate: f32, envelope: Envelope) {
-        self.envelope = envelope.into_samples(sample_rate);
+    pub fn set_envelope_and_ratios(&mut self, envelope: Envelope, target_ratios: TargetRatios) {
+        self.envelope = SamplesEnvelope::new(envelope, self.sample_rate, target_ratios);
     }
 
     pub const fn is_active(&self) -> bool {
         match self.state {
-            State::Ended | State::Release(_) => false,
+            State::Ended | State::Release => false,
             _ => true,
         }
     }
@@ -95,40 +130,55 @@ impl Adsr {
     }
 
     pub const fn release(&mut self) {
-        self.state = State::Release(0.0);
+        self.state = State::Release;
     }
 
-    pub const fn process(&mut self) -> f32 {
+    pub fn process(&mut self) -> f32 {
         match self.state {
-            State::Attack(time) => {
-                self.state = if time >= self.envelope.attack_samples {
-                    State::Decay(0.0)
-                } else {
-                    State::Attack(time + 1.0)
-                };
+            State::Attack => {
+                self.output = {
+                    let output =
+                        self.envelope.attack_base + self.output * self.envelope.attack_coefficient;
+                    if output < 1.0 {
+                        output
+                    } else {
+                        self.state = State::Decay;
 
-                time as f32 * self.envelope.attack_reciprocal
-            }
-            State::Decay(time) => {
-                self.state = if time >= self.envelope.decay_samples {
-                    State::Sustain
-                } else {
-                    State::Decay(time + 1.0)
+                        1.0
+                    }
                 };
-
-                1.0 - (1.0 - self.envelope.sustain as f32) * (time * self.envelope.decay_reciprocal)
             }
-            State::Sustain => self.envelope.sustain,
-            State::Release(time) => {
-                self.state = if time >= self.envelope.release_samples {
-                    State::Ended
-                } else {
-                    State::Release(time + 1.0)
+            State::Decay => {
+                self.output = {
+                    let output =
+                        self.envelope.decay_base + self.output * self.envelope.decay_coefficient;
+                    if output > self.envelope.sustain_level {
+                        output
+                    } else {
+                        self.state = State::Sustain;
+
+                        self.envelope.sustain_level
+                    }
                 };
-
-                self.envelope.sustain * (1.0 - time * self.envelope.release_reciprocal)
             }
-            State::Ended => 0.0,
-        }
+            State::Sustain => {}
+            State::Release => {
+                self.output = {
+                    let output = self.envelope.release_base
+                        + self.output * self.envelope.release_coefficient;
+
+                    if output > 0.0 {
+                        output
+                    } else {
+                        self.state = State::Ended;
+
+                        0.0
+                    }
+                };
+            }
+            State::Ended => {}
+        };
+
+        self.output
     }
 }

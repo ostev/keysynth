@@ -48,13 +48,13 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
             voices: [const { None }; N],
             vcf: Vcf::new(),
             sample_rate,
-            cutoff: 0.1,
+            cutoff: 0.4,
             resonance: 0.2,
             envelope: Envelope {
-                attack: 2.0,
-                decay: 0.8,
-                sustain: 0.9,
-                release: 0.2,
+                attack: 1.0,
+                decay: 0.9,
+                sustain: 0.1,
+                release: 0.9,
             },
         }
     }

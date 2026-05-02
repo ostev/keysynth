@@ -1,5 +1,5 @@
 use crate::{
-    adsr::{Adsr, Envelope},
+    adsr::{Adsr, Envelope, TargetRatios},
     note,
     oscillator::WavetableOscillator,
 };
@@ -14,7 +14,7 @@ pub struct Voice<'a, const S: usize> {
 }
 
 impl<'a, const S: usize> Voice<'a, S> {
-    pub const fn new(
+    pub fn new(
         sample_rate: f32,
         osc_a: WavetableOscillator<'a, S>,
         osc_b: WavetableOscillator<'a, S>,
@@ -25,7 +25,14 @@ impl<'a, const S: usize> Voice<'a, S> {
             osc_a,
             osc_b,
             note,
-            adsr: Adsr::new(sample_rate, envelope),
+            adsr: Adsr::new(
+                sample_rate,
+                envelope,
+                TargetRatios {
+                    attack: 0.3,
+                    decay_release: 0.0001,
+                },
+            ),
         }
     }
 
@@ -39,7 +46,7 @@ impl<'a, const S: usize> Voice<'a, S> {
         self.adsr.is_ended()
     }
 
-    pub const fn sample(&mut self, blend: f32) -> f32 {
+    pub fn sample(&mut self, blend: f32) -> f32 {
         let a = self.osc_a.sample(self.note.note);
         let b = self.osc_b.sample(self.note.note);
 
