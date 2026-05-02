@@ -56,14 +56,17 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
             envelope: Envelope {
                 attack: 0.3,
                 decay: 0.3,
-                sustain: 0.2,
+                sustain: 1.0,
                 release: 0.9,
             },
         }
     }
 
     pub fn note_on(&mut self, note: Event) -> Result<(), PlayError> {
-        let free_voice = self.voices.iter_mut().find(|voice| voice.is_none());
+        let free_voice = self.voices.iter_mut().find(|voice| match voice {
+            Some(voice) => !voice.is_active(),
+            None => true,
+        });
 
         match free_voice {
             Some(voice) => {
