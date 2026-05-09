@@ -2,22 +2,23 @@ use crate::{
     adsr::{Adsr, Envelope, TargetRatios},
     note,
     oscillator::WavetableOscillator,
+    wavetable::Wavetable,
 };
 
 #[derive(Clone, Debug)]
-pub struct Voice<'a, const S: usize> {
-    osc_a: WavetableOscillator<'a, S>,
-    osc_b: WavetableOscillator<'a, S>,
+pub struct Voice<const S: usize> {
+    osc_a: WavetableOscillator<S>,
+    osc_b: WavetableOscillator<S>,
     note: note::Event,
 
     adsr: Adsr,
 }
 
-impl<'a, const S: usize> Voice<'a, S> {
+impl<const S: usize> Voice<S> {
     pub fn new(
         sample_rate: f32,
-        osc_a: WavetableOscillator<'a, S>,
-        osc_b: WavetableOscillator<'a, S>,
+        osc_a: WavetableOscillator<S>,
+        osc_b: WavetableOscillator<S>,
         note: note::Event,
         envelope: Envelope,
     ) -> Self {
@@ -46,9 +47,9 @@ impl<'a, const S: usize> Voice<'a, S> {
         self.adsr.is_ended()
     }
 
-    pub fn sample(&mut self, blend: f32) -> f32 {
-        let a = self.osc_a.sample(self.note.note);
-        let b = self.osc_b.sample(self.note.note);
+    pub fn sample(&mut self, wavetables: &[Wavetable<S>; 2], blend: f32) -> f32 {
+        let a = self.osc_a.sample(self.note.note, &wavetables[0]);
+        let b = self.osc_b.sample(self.note.note, &wavetables[1]);
 
         let sample = a * (1.0 - blend) + b * blend;
 

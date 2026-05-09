@@ -21,10 +21,10 @@ pub mod wavetable;
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 44_100;
 
-pub struct Synth<'a, const N: usize, const S: usize> {
-    wavetables: [&'a Wavetable<S>; 2],
+pub struct Synth<const N: usize, const S: usize> {
+    pub wavetables: [Wavetable<S>; 2],
 
-    voices: [Option<Voice<'a, S>>; N],
+    voices: [Option<Voice<S>>; N],
 
     vcf: Vcf,
     sample_rate: f32,
@@ -43,8 +43,8 @@ pub enum PlayError {
     NoMatchingVoice,
 }
 
-impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
-    pub const fn new(sample_rate: f32, wavetables: [&'a Wavetable<S>; 2]) -> Self {
+impl<const N: usize, const S: usize> Synth<N, S> {
+    pub const fn new(sample_rate: f32, wavetables: [Wavetable<S>; 2]) -> Self {
         Self {
             wavetables,
             voices: [const { None }; N],
@@ -72,8 +72,8 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
             Some(voice) => {
                 *voice = Some(Voice::new(
                     self.sample_rate,
-                    WavetableOscillator::new(self.wavetables[0], self.sample_rate),
-                    WavetableOscillator::new(self.wavetables[1], self.sample_rate),
+                    WavetableOscillator::new(self.sample_rate),
+                    WavetableOscillator::new(self.sample_rate),
                     note,
                     self.envelope,
                 ));
@@ -114,7 +114,7 @@ impl<'a, const N: usize, const S: usize> Synth<'a, N, S> {
                         *option_voice = None;
                         None
                     } else {
-                        Some(voice.sample(0.0))
+                        Some(voice.sample(&self.wavetables, 0.0))
                     }
                 }
                 None => None,
