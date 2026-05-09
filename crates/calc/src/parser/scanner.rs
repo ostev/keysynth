@@ -122,16 +122,7 @@ impl<'s> Scanner<'s> {
     fn is_insignificant_whitespace(&mut self) -> bool {
         self.chars
             .peek()
-            .map(|(_index, char)| {
-                let is_comment = *char == '/'
-                    && self
-                        .chars
-                        .peek_next()
-                        .map(|(_, char_2)| *char_2 == '/')
-                        .unwrap_or(false);
-
-                char.is_whitespace() || is_comment
-            })
+            .map(|(_index, char)| char.is_whitespace())
             .unwrap_or(false)
     }
 
@@ -142,19 +133,7 @@ impl<'s> Scanner<'s> {
     }
 
     fn next_matches(&mut self, expected: char) -> bool {
-        let matches = self
-            .chars
-            .peek()
-            .map(|(_, char)| *char == expected)
-            .unwrap_or(false);
-
-        if matches {
-            self.chars.next();
-
-            true
-        } else {
-            false
-        }
+        self.next_matches_predicate(|char| *char == expected)
     }
 
     fn next_matches_predicate(&mut self, predicate: impl Fn(&char) -> bool) -> bool {
