@@ -1,6 +1,5 @@
 use alloc::{format, string::String, vec::Vec};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use itertools::Itertools;
 use lalrpop_util::ParseError;
 
 use crate::parser::scanner::{self, Token};
