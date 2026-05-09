@@ -12,22 +12,40 @@ bench = false
 doctest = false
 
 [dependencies]
-esp-hal = { version = "~1.0", features = ["esp32s3", "unstable"] }
-
-
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3"] }
+esp-hal = { version = "1.1.0", features = ["esp32s3", "unstable"] }
+esp-alloc = "0.10.0"
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
+esp-rtos = { version = "0.3.0", features = ["embassy", "esp32s3"] }
+esp-println = { version = "0.17.0", features = ["esp32s3"] }
+esp-sync = { version = "0.2.1", features = ["esp32s3"] }
 
 critical-section = "1.2.0"
-esp-alloc = "0.9.0"
 
 synth = { path = "../synth" }
 calc = { path = "../calc" }
 micromath = "2.1.0"
-esp-println = { version = "0.16.1", features = ["esp32s3"] }
+
 bumpalo = "3.20.2"
 rpds = { version = "1.2.0", default-features = false }
 archery = "1.2.2"
 
+
+embedded_gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.1.0" }
+static_cell = "2.1.1"
+usbd-hid = "0.10.0"
+
+embassy-usb = { git = "https://github.com/embassy-rs/embassy.git" }
+embassy-executor = "0.10.0"
+embassy-time = "0.5.1"
+embassy-sync = "0.8.0"
+keyberon = "0.1.1"
+bytemuck = { version = "1.25.0", features = ["derive"] }
+postcard = "1.1.3"
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+
+[patch.crates-io]
+embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy.git" }
+embassy-time-driver = { git = "https://github.com/embassy-rs/embassy.git" }
 
 [profile.dev]
 # Rust debug is too slow.
