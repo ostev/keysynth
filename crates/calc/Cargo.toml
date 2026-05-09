@@ -14,5 +14,4 @@ lalrpop-util = { version = "0.23.1", default-features = false }
 codespan-reporting = { version = "0.13.1", default-features = false, features = [
     "ascii-only",
 ] }
-itertools = "0.14.0"
 libm = "0.2.16"
