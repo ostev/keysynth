@@ -1,0 +1,15 @@
+[build]
+target = "thumbv6m-none-eabi"
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "probe-rs run --chip RP2040 --protocol swd"
+
+rustflags = [
+    "-C",
+    "link-arg=-Tlink.x",
+    "-C",
+    "link-arg=--nmagic",
+
+    "-C",
+    "link-arg=-Tdefmt.x",
+]
