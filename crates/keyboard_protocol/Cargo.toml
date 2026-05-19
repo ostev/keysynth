@@ -1,0 +1,10 @@
+[package]
+name = "keyboard_protocol"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+defmt = "1.0.1"
+enumflags2 = { version = "0.7.12", features = ["serde"] }
+heapless = "0.9.3"
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
