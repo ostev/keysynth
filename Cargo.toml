@@ -6,5 +6,6 @@ members = [
     "crates/calc",
     "crates/repl",
     "crates/gui",
+    "crates/keyboard_protocol",
 ]
-exclude = ["crates/test_esp"]
+exclude = ["crates/test_esp", "crates/keyboard_rp2040"]
