@@ -4,28 +4,39 @@ use embassy_usb::{
         hid::{self, HidWriter},
         uac1,
     },
+    driver::host::pipe::Out,
 };
 use esp_hal::{
     Async, Blocking,
-    clock::{ClockConfig, CpuClock},
-    dma::{self, DmaInterrupt, DmaRxBuf},
+    clock::{ClockConfig, CpuClock, ll::UartFunctionClockConfig},
+    delay::Delay,
+    dma::{self, DmaInterrupt, DmaRxBuf, DmaTxBuf},
     dma_buffers,
+    gpio::{Level, Output, OutputConfig},
     i2s::{
         self,
         master::{Channels, I2s, I2sTx},
     },
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     otg_fs::{Usb, UsbBus},
-    peripherals::{Peripherals, TIMG0},
+    peripherals::{GPIO4, Peripherals, TIMG0},
+    spi::{self, master::Spi},
     system::CpuControl,
     time::Rate,
     timer::timg::TimerGroup,
-    uart::{self, Config, Uart, UartRx},
+    uart::{self, Uart, UartRx},
 };
+use keyboard_protocol::uart::BAUDRATE;
+use st7789v2::{ResetInterface, St7789v2};
 use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
-use crate::audio::SAMPLE_RATE;
+use crate::{
+    audio::SAMPLE_RATE,
+    gui::display::{self, DisplayHardware, DisplayResetInterface, DisplaySpiInterface},
+    hid::UsbHidHardware,
+    keyboard::KeyboardHardware,
+};
 
 pub struct Hardware {
     pub timer_group_0: TimerGroup<'static, TIMG0<'static>>,
@@ -35,13 +46,19 @@ pub struct Hardware {
     pub audio: AudioHardware,
     pub keyboard: KeyboardHardware,
 
+    pub display: DisplayHardware,
+
     pub hid: UsbHidHardware,
+    // pub debug_uart: Uart<'static, Blocking>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub enum InitError {
     I2SConfigError(i2s::master::ConfigError),
     UartConfigError(uart::ConfigError),
+    SpiConfigError(spi::master::ConfigError),
+    DmaBufError(dma::DmaBufError),
+    DisplayInitError(display::DriverError),
 }
 
 impl Hardware {
@@ -78,9 +95,13 @@ impl Hardware {
         };
 
         let keyboard = {
-            let uart = UartRx::new(peripherals.UART0, Config::default())
-                .map_err(InitError::UartConfigError)?
-                .with_rx(peripherals.GPIO12);
+            let uart = UartRx::new(
+                peripherals.UART1,
+                uart::Config::default().with_baudrate(BAUDRATE),
+            )
+            .map_err(InitError::UartConfigError)?
+            .with_rx(peripherals.GPIO12)
+            .into_async();
 
             KeyboardHardware { uart }
         };
@@ -155,6 +176,50 @@ impl Hardware {
             (hid, audio)
         };
 
+        let display = {
+            let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
+
+            let dma_rx_buf =
+                DmaRxBuf::new(rx_descriptors, rx_buffer).map_err(InitError::DmaBufError)?;
+            let dma_tx_buf =
+                DmaTxBuf::new(tx_descriptors, tx_buffer).map_err(InitError::DmaBufError)?;
+
+            let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> =
+                Spi::new(peripherals.SPI2, spi::master::Config::default())
+                    .map_err(InitError::SpiConfigError)?
+                    .with_sck(peripherals.GPIO2)
+                    .with_cs(peripherals.GPIO3)
+                    .with_mosi(peripherals.GPIO1)
+                    .with_dma(peripherals.DMA_CH1)
+                    .with_buffers(dma_rx_buf, dma_tx_buf);
+
+            let display_interface = DisplaySpiInterface::new(
+                spi,
+                Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()),
+            );
+            let reset_interface = DisplayResetInterface::new(Output::new(
+                peripherals.GPIO5,
+                Level::Low,
+                OutputConfig::default(),
+            ));
+
+            let mut delay = Delay::new();
+
+            let driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
+                .buffered::<display::Color>(st7789v2::Framebuffer::heap::<
+                    { display::FRAMEBUFFER_SIZE },
+                >())
+                .build(st7789v2::ColorMode::Rgb565, &mut delay)
+                .map_err(InitError::DisplayInitError)?;
+
+            DisplayHardware { driver }
+        };
+
+        // let debug_uart = Uart::new(peripherals.UART0, uart::Config::default())
+        //     .map_err(InitError::UartConfigError)?
+        //     .with_tx(peripherals.GPIO43)
+        //     .with_rx(peripherals.GPIO44);
+
         Ok(Hardware {
             context_switch_interrupt,
             timer_group_0,
@@ -165,6 +230,7 @@ impl Hardware {
             },
             keyboard,
             hid,
+            display,
         })
     }
 }
@@ -178,18 +244,6 @@ pub type UsbDriver = esp_hal::otg_fs::asynch::Driver<'static>;
 
 pub struct UsbAudioHardware {
     pub endpoint: uac1::source::AudioSourceEpIn<'static, UsbDriver>,
-}
-
-pub struct UsbHidHardware {
-    pub writer: HidWriter<'static, UsbDriver, { UsbHidHardware::REPORT_SIZE }>,
-}
-
-impl UsbHidHardware {
-    const REPORT_SIZE: usize = 8;
-}
-
-pub struct KeyboardHardware {
-    pub uart: UartRx<'static, Blocking>,
 }
 
 pub struct AudioHardware {
