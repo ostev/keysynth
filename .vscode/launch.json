@@ -5,6 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "name": "Debug RP2040 keyboard",
+            "cwd": "",
+            "connectUnderReset": false,
+            "chip": "rp2040",
+            "flashingConfig": {
+                "flashingEnabled": true,
+                "verifyBeforeFlashing": true,
+                "verifyAfterFlashing": true,
+                "haltAfterReset": true
+            },
+            "coreConfigs": [
+                {
+                    "coreIndex": 0,
+                    "programBinary": "./crates/keyboard_rp2040/target/thumbv6m-none-eabi/debug/keyboard_rp2040"
+                }
+            ]
+        },
+        {
             "name": "Debug unit tests in library 'synth'",
             "type": "lldb",
             "request": "launch",
