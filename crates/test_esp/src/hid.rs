@@ -1,19 +1,20 @@
 use embassy_executor::task;
-use embassy_sync::channel::Receiver;
+use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_usb::class::hid::HidWriter;
+use enumflags2::BitFlags;
 use esp_println::println;
 use esp_sync::RawMutex;
 use keyberon::key_code::KeyCode;
+use keyboard_protocol::{Modifier, StandardKey};
 use usbd_hid::descriptor::KeyboardReport;
 
-use crate::{
-    hardware::UsbDriver,
-    keyboard::{KeyboardStatus, StandardKey},
-};
+use crate::{hardware::UsbDriver, sender};
+
+sender! { UsbKeyboardStatus }
 
 pub struct UsbKeyboardStatus {
-    keys: [StandardKey; 6],
-    modifier_bitfield: u8,
+    pub keys: [StandardKey; 6],
+    pub modifier_bitfield: BitFlags<Modifier>,
 }
 
 pub struct UsbHidHardware {
@@ -21,10 +22,9 @@ pub struct UsbHidHardware {
 }
 
 #[task]
-async fn hid(
-    mut hardware: UsbHidHardware,
-    receiver: Receiver<'static, RawMutex, UsbKeyboardStatus, 1>,
-) {
+pub async fn hid(mut hardware: UsbHidHardware) {
+    let receiver = CHANNEL.receiver();
+
     loop {
         let UsbKeyboardStatus {
             keys,
@@ -37,7 +37,7 @@ async fn hid(
             // cause issues, however.
             keycodes: unsafe { core::mem::transmute(keys) },
             leds: 0,
-            modifier: modifier_bitfield,
+            modifier: modifier_bitfield.bits(),
             reserved: 0,
         };
         match hardware.writer.write_serialize(&report).await {
