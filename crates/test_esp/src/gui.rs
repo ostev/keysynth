@@ -25,7 +25,7 @@ pub enum InputEvent {
     Keyboard(KeyboardStatus),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Hello,
 }
@@ -45,16 +45,13 @@ impl App for Gui {
     type Msg = Msg;
 
     type FocusKey = FocusKey;
+    type Event = Event;
 
-    fn init() -> Self {
+    fn new() -> Self {
         Self { page: Page::Home }
     }
 
-    fn default_focus_state() -> FocusState {
-        FocusState::Unfocused
-    }
-
-    fn default_focus_key() -> Self::FocusKey {
+    fn initial_focus_key() -> Self::FocusKey {
         FocusKey::Hello
     }
 
@@ -62,56 +59,59 @@ impl App for Gui {
         Rgb565::WHITE
     }
 
-    fn update(&mut self, msg: Self::Msg) {
-        match msg {
-            Msg::Key(key_event) => todo!(),
-        }
+    fn update(&mut self, msg: Self::Msg) -> Option<(FocusKey, FocusState)> {
+        // match msg {
+        //     Msg::Key(key_event) => todo!(),
+        // }
+        None
     }
 
     fn view<'a>(
         &'a self,
-        v: &'a embedded_gui::view::Factory,
-    ) -> embedded_gui::view::View<'a, Self::Target, Self::FocusKey> {
-        // v.view(
-        //     Direction::Horizontal,
-        //     [
-        //         v.spacer(),
-        // v.primitive(
-        //     Sizing::Intrinsic,
-        //     Text {
-        //         content: self.text.to_ref(),
-        //         font_style: self.font_style.to_ref(),
-        //     },
-        // ),
-        // v.spacer(),
-        // v.primitive(
-        //     Sizing::Intrinsic,
-        //     Text {
-        //         content: self.text.to_ref(),
-        //         font_style: self.font_style.to_ref(),
-        //     },
-        // ),
-        // v.component(
-        //     Sizing::Fill,
-        //     Button {
-        //         text: SignalRef::owned("Say hi!"),
-        //         font_style: self.font_style.to_ref(),
-        //         size: SignalRef::owned(Size::new(128, 32)),
-        //     },
-        //     [],
-        // ),
-        // ],
-        // )
+        v: &'a embedded_gui::view::Factory<Self::FocusKey, Self::Event, Self::Msg>,
+    ) -> embedded_gui::view::View<'a, Self::Target, Self::FocusKey, Self::Event, Self::Msg> {
+        v.view(
+            Direction::Horizontal,
+            [
+                v.spacer(),
+                // v.primitive(
+                //     Sizing::Intrinsic,
+                //     Text {
+                //         content: self.text.to_ref(),
+                //         font_style: self.font_style.to_ref(),
+                //     },
+                // ),
+                // v.spacer(),
+                // v.primitive(
+                //     Sizing::Intrinsic,
+                //     Text {
+                //         content: self.text.to_ref(),
+                //         font_style: self.font_style.to_ref(),
+                //     },
+                // ),
+                // v.component(
+                //     Sizing::Fill,
+                //     Button {
+                //         text: SignalRef::owned("Say hi!"),
+                //         font_style: self.font_style.to_ref(),
+                //         size: SignalRef::owned(Size::new(128, 32)),
+                //     },
+                //     [],
+                // ),
+            ],
+        )
     }
 }
 
-enum Msg {
-    Key(KeyEvent),
-}
+enum Msg {}
 
 enum KeyEvent {
     Pressed(Key),
     Released(Key),
+}
+
+enum Event {
+    Key(KeyEvent),
 }
 
 struct InputState {
@@ -119,22 +119,22 @@ struct InputState {
 }
 
 impl InputState {
-    const fn new() -> InputState {
+    fn new() -> InputState {
         InputState {
             keyboard: KeyboardStatus::new(),
         }
     }
 
-    async fn receive_msgs(&mut self) -> impl Iterator<Item = Msg> {
+    async fn receive_msgs(&mut self) -> impl Iterator<Item = Event> {
         let input_event = CHANNEL.receiver().receive().await;
         match input_event {
             InputEvent::Keyboard(keyboard_status) => {
-                let diff = keyboard_status.diff(&self.keyboard);
+                let diff = keyboard_status.diff(self.keyboard);
 
                 let pressed = diff.pressed.map(KeyEvent::Pressed);
                 let released = diff.released.map(KeyEvent::Released);
 
-                pressed.chain(released).map(Msg::Key)
+                pressed.chain(released).map(Event::Key)
             }
         }
     }
@@ -142,7 +142,7 @@ impl InputState {
 
 #[task]
 pub async fn app(mut hardware: DisplayHardware) {
-    let gui = Gui::init();
+    let mut gui = Gui::new();
 
     hardware.driver.display_on().unwrap();
     hardware.driver.set_brightness(0xff).unwrap();
@@ -150,10 +150,12 @@ pub async fn app(mut hardware: DisplayHardware) {
     let Ok(_) = hardware.driver.clear(Gui::background_color());
     hardware.driver.full_flush().unwrap();
 
-    let mut view_factory = embedded_gui::view::Factory::new();
+    let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
-    let mut render = || {
-        let Ok(_) = embedded_gui::app::render(&gui, &mut view_factory, &mut hardware.driver);
+    let mut input_state = InputState::new();
+
+    loop {
+        let Ok(_) = embedded_gui::app::render(&gui, &mut internal_state, &mut hardware.driver);
 
         match hardware.driver.flush() {
             Ok(_) => {}
@@ -164,19 +166,9 @@ pub async fn app(mut hardware: DisplayHardware) {
                 )
             }
         }
-    };
 
-    let input_state = InputState::new();
+        let events = input_state.receive_msgs().await;
 
-    render();
-
-    loop {
-        let msgs = input_state.receive_msgs();
-
-        for msg in msgs {
-            gui.update(msg);
-        }
-
-        render()
+        embedded_gui::app::dispatch(&mut gui, &mut internal_state, events);
     }
 }
