@@ -27,12 +27,12 @@ synth = { path = "../synth" }
 calc = { path = "../calc" }
 micromath = "2.1.0"
 
-bumpalo = "3.20.2"
-rpds = { version = "1.2.0", default-features = false }
+bumpalo = "3.20.3"
+rpds = { version = "1.2.1", default-features = false }
 archery = "1.2.2"
 
 
-embedded-gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.0.3" }
+embedded-gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.0.4" }
 
 static_cell = "2.1.1"
 usbd-hid = "0.10.0"
