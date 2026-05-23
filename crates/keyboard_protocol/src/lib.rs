@@ -21,7 +21,7 @@ pub struct KeyboardDiff<Added: Iterator<Item = Key>, Removed: Iterator<Item = Ke
 }
 
 impl KeyboardStatus {
-    pub const fn new() -> KeyboardStatus {
+    pub fn new() -> KeyboardStatus {
         KeyboardStatus {
             keys: [StandardKey::None; 6],
             modifier_bitfield: BitFlags::empty(),
@@ -30,8 +30,8 @@ impl KeyboardStatus {
     }
 
     pub fn diff(
-        &self,
-        previous: &KeyboardStatus,
+        self,
+        previous: KeyboardStatus,
     ) -> KeyboardDiff<impl Iterator<Item = Key>, impl Iterator<Item = Key>> {
         let added_modifiers = self.modifier_bitfield & !previous.modifier_bitfield;
         let removed_modifiers = previous.modifier_bitfield & !self.modifier_bitfield;
@@ -39,20 +39,26 @@ impl KeyboardStatus {
         let added_special = self.special_bitfield & !previous.special_bitfield;
         let removed_special = previous.special_bitfield & !self.special_bitfield;
 
-        let added_standard = self.keys.iter().filter(|key| !previous.keys.contains(key));
-        let removed_standard = previous.keys.iter().filter(|key| !self.keys.contains(key));
+        let added_standard = self
+            .keys
+            .into_iter()
+            .filter(move |key| !previous.keys.contains(key));
+        let removed_standard = previous
+            .keys
+            .into_iter()
+            .filter(move |key| !self.keys.contains(key));
 
-        let added = added_standard
-            .map(|key| Key::Standard(*key))
+        let pressed = added_standard
+            .map(|key| Key::Standard(key))
             .chain(added_modifiers.into_iter().map(Key::Modifier))
             .chain(added_special.into_iter().map(Key::Special));
 
-        let removed = removed_standard
-            .map(|key| Key::Standard(*key))
+        let released = removed_standard
+            .map(|key| Key::Standard(key))
             .chain(removed_modifiers.into_iter().map(Key::Modifier))
             .chain(removed_special.into_iter().map(Key::Special));
 
-        KeyboardDiff { added, removed }
+        KeyboardDiff { pressed, released }
     }
 }
 
