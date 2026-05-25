@@ -21,7 +21,8 @@ pub struct KeyboardDiff<Added: Iterator<Item = Key>, Removed: Iterator<Item = Ke
 }
 
 impl KeyboardStatus {
-    pub fn new() -> KeyboardStatus {
+    #[inline]
+    pub fn empty() -> KeyboardStatus {
         KeyboardStatus {
             keys: [StandardKey::None; 6],
             modifier_bitfield: BitFlags::empty(),
