@@ -5,6 +5,8 @@
     holding buffers for the duration of a data transfer."
 )]
 
+extern crate alloc;
+
 use embassy_executor::task;
 use embassy_sync::channel::Channel;
 use esp_println::println;
