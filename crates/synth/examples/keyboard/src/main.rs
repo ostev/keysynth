@@ -84,7 +84,7 @@ fn main() {
     let config: StreamConfig = output_config.into();
 
     // The audio callback requires 'static captures, so keep the wavetable alive for process lifetime.
-    let table: &'static DefaultWavetable = Box::leak(Box::new(prompt_for_wavetable().unwrap()));
+    let table: DefaultWavetable = prompt_for_wavetable().unwrap();
 
     let mut display = SimulatorDisplay::<BinaryColor>::new(Size::new(128, 64));
     {
@@ -104,8 +104,8 @@ fn main() {
     let keyboard = Keyboard::new((0, 0), (10, 4)).unwrap();
     let base = Note::C3;
 
-    let synth: Arc<Mutex<Synth<'static, 5, { wavetable::DEFAULT_SIZE }>>> =
-        Arc::new(Mutex::new(Synth::new(sample_rate, [table, table])));
+    let synth: Arc<Mutex<Synth<5, { wavetable::DEFAULT_SIZE }>>> =
+        Arc::new(Mutex::new(Synth::new(sample_rate, [table.clone(), table])));
 
     let stream = match sample_format {
         SampleFormat::F32 => {
@@ -166,13 +166,12 @@ fn main() {
     }
 }
 
-fn make_stream<'a, T, const N: usize, const S: usize>(
-    synth: Arc<Mutex<Synth<'a, N, S>>>,
+fn make_stream<T, const N: usize, const S: usize>(
+    synth: Arc<Mutex<Synth<N, S>>>,
     device: &Device,
     config: &StreamConfig,
 ) -> cpal::Stream
 where
-    'a: 'static,
     T: SizedSample + FromSample<f32>,
 {
     let num_channels = config.channels as usize;
