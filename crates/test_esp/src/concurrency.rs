@@ -2,7 +2,7 @@ pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
 
 #[macro_export]
 macro_rules! receiver {
-    ($message:ident) => {
+    ($message:ty) => {
         static CHANNEL: embassy_sync::channel::Channel<
             esp_sync::RawMutex,
             $message,
@@ -20,7 +20,7 @@ macro_rules! receiver {
         }
     };
 
-    ($message:ident, capacity: $capacity:expr) => {
+    ($message:ty, capacity: $capacity:expr) => {
         static CHANNEL: embassy_sync::channel::Channel<
             esp_sync::RawMutex,
             $message,
@@ -37,7 +37,7 @@ macro_rules! receiver {
 
 #[macro_export]
 macro_rules! sender {
-    ($message:ident) => {
+    ($message:ty) => {
         static CHANNEL: embassy_sync::channel::Channel<
             esp_sync::RawMutex,
             $message,
@@ -55,7 +55,7 @@ macro_rules! sender {
         }
     };
 
-    ($message:ident, $capacity:expr) => {
+    ($message:ty, $capacity:expr) => {
         static CHANNEL: embassy_sync::channel::Channel<
             esp_sync::RawMutex,
             $message,
