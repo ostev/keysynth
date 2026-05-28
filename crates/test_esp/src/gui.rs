@@ -16,36 +16,33 @@ use st7789v2::{DriverResult, St7789v2};
 
 pub mod display;
 mod editor;
+mod event;
 
 use crate::{gui::display::DisplayHardware, receiver, sender};
 
-sender!(InputEvent);
-
-pub enum InputEvent {
-    Keyboard(KeyboardStatus),
-}
+sender!(event::InputChange);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Hello,
 }
 
-enum Page {
+enum Page<'model> {
     Home,
-    Editor(editor::Model),
+    Editor(editor::Editor<'model>),
 }
 
-struct Gui {
-    page: Page,
+struct Gui<'model> {
+    page: Page<'model>,
 }
 
-impl App for Gui {
+impl<'model> App for Gui<'model> {
     type Target = display::Driver;
 
     type Msg = Msg;
 
     type FocusKey = FocusKey;
-    type Event = Event;
+    type Event = event::Event;
 
     fn new() -> Self {
         Self { page: Page::Home }
@@ -105,41 +102,6 @@ impl App for Gui {
 
 enum Msg {}
 
-enum KeyEvent {
-    Pressed(Key),
-    Released(Key),
-}
-
-enum Event {
-    Key(KeyEvent),
-}
-
-struct InputState {
-    keyboard: KeyboardStatus,
-}
-
-impl InputState {
-    fn new() -> InputState {
-        InputState {
-            keyboard: KeyboardStatus::new(),
-        }
-    }
-
-    async fn receive_msgs(&mut self) -> impl Iterator<Item = Event> {
-        let input_event = CHANNEL.receiver().receive().await;
-        match input_event {
-            InputEvent::Keyboard(keyboard_status) => {
-                let diff = keyboard_status.diff(self.keyboard);
-
-                let pressed = diff.pressed.map(KeyEvent::Pressed);
-                let released = diff.released.map(KeyEvent::Released);
-
-                pressed.chain(released).map(Event::Key)
-            }
-        }
-    }
-}
-
 #[task]
 pub async fn app(mut hardware: DisplayHardware) {
     let mut gui = Gui::new();
@@ -152,7 +114,7 @@ pub async fn app(mut hardware: DisplayHardware) {
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
-    let mut input_state = InputState::new();
+    let mut input_state = event::InputState::new();
 
     loop {
         let Ok(_) = embedded_gui::app::render(&gui, &mut internal_state, &mut hardware.driver);
@@ -167,7 +129,7 @@ pub async fn app(mut hardware: DisplayHardware) {
             }
         }
 
-        let events = input_state.receive_msgs().await;
+        let events = input_state.receive_msgs(CHANNEL.receiver()).await;
 
         embedded_gui::app::dispatch(&mut gui, &mut internal_state, events);
     }
