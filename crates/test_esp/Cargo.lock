@@ -452,6 +452,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
+name = "ekv"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab888debca410aa6f2726fb363926ca73539378c5e8880c8f08f35ae4b24d938"
+dependencies = [
+ "embassy-sync 0.6.2",
+ "heapless 0.8.0",
+]
+
+[[package]]
 name = "embassy-embedded-hal"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2226,6 +2236,7 @@ dependencies = [
  "bytemuck",
  "calc",
  "critical-section",
+ "ekv",
  "embassy-executor",
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-time 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2240,6 +2251,7 @@ dependencies = [
  "esp-println",
  "esp-rtos",
  "esp-sync",
+ "heapless 0.9.3",
  "keyberon",
  "keyboard_protocol",
  "micromath",

@@ -48,6 +48,9 @@ st7789v2 = "0.1.0"
 embedded-hal = "1.0.0"
 embedded-graphics = "0.8.2"
 enumflags2 = { version = "0.7.12", features = ["serde"] }
+heapless = "0.9.3"
+ekv = "1.0.0"
+
 
 [patch.crates-io]
 embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy.git" }
