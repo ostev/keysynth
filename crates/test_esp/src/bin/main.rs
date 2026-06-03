@@ -35,14 +35,19 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(spawner: Spawner) -> ! {
     // generator version: 1.2.0
 
-    let mut hardware = Hardware::new().unwrap();
+    let hardware = Hardware::new().unwrap();
 
     esp_rtos::start(
         hardware.timer_group_0.timer0,
         hardware.context_switch_interrupt.software_interrupt0,
     );
 
-    // let _ = spawner;
+    hardware
+        .storage
+        .init()
+        .map_err(|_| ())
+        .expect("Storage should not already be initialised");
+
     spawner.spawn(router().unwrap());
     // spawner.spawn(hid(hardware.hid).unwrap());
     spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());
@@ -58,6 +63,4 @@ async fn main(spawner: Spawner) -> ! {
         // );
         Timer::after(Duration::from_secs(2)).await;
     }
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0/examples
 }

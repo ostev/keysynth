@@ -7,7 +7,10 @@ pub enum KeyEvent {
 }
 
 pub enum Event {
-    Key(KeyEvent),
+    Key {
+        event: KeyEvent,
+        keyboard: KeyboardStatus,
+    },
 }
 
 pub enum InputChange {
@@ -34,11 +37,16 @@ impl InputState {
         match input_event {
             InputChange::Keyboard(keyboard_status) => {
                 let diff = keyboard_status.diff(self.keyboard);
+                self.keyboard = keyboard_status;
 
                 let pressed = diff.pressed.map(KeyEvent::Pressed);
                 let released = diff.released.map(KeyEvent::Released);
 
-                pressed.chain(released).map(Event::Key)
+                let keyboard = keyboard_status;
+
+                pressed
+                    .chain(released)
+                    .map(move |event| Event::Key { event, keyboard })
             }
         }
     }

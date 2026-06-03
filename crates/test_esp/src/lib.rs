@@ -19,6 +19,8 @@ pub mod gui;
 pub mod hardware;
 pub mod hid;
 pub mod keyboard;
+pub mod storage;
+pub mod text;
 
 pub enum KeyboardMode {
     Passthrough,

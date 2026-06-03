@@ -1,51 +1,102 @@
+use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{Rgb565, RgbColor},
-    text::Text,
 };
 use embedded_gui::{
-    app::App,
+    app::{App, Change, State},
+    component::{any_component, button::Button},
     interactive::FocusState,
     layout::{Direction, Sizing},
+    primitive::{any_primitive, text::Text},
+    signal::{Reactive, Signal},
 };
 use esp_println::println;
+use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
 use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus};
 use st7789v2::{DriverResult, St7789v2};
 
 pub mod display;
 mod editor;
+mod effect;
 mod event;
+mod message;
 
-use crate::{gui::display::DisplayHardware, receiver, sender};
+use crate::{
+    gui::{display::DisplayHardware, editor::source::Source, effect::Effect, message::Message},
+    storage::{self, Name},
+    text::ByteString,
+};
 
-sender!(event::InputChange);
+mod channel {
+    use crate::{channel, gui::event};
+
+    channel!(event::InputChange);
+}
+
+pub use channel::sender;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Hello,
 }
 
-enum Page<'model> {
+#[derive(Reactive)]
+#[any_component(target = display::Driver, event = event::Event, msg = Msg, focus_key = FocusKey)]
+enum AnyComponent<'a> {
+    Button(Button<'a, display::Color, &'a str>),
+}
+
+#[derive(Reactive)]
+#[any_primitive(target = display::Driver)]
+enum AnyPrimitive<'a> {
+    EditorView(editor::View<'a>),
+    Spacer(embedded_gui::primitive::spacer::Spacer<'a>),
+    Text(Text<'a, display::Color, &'a str>),
+}
+
+#[derive(Reactive)]
+enum Page {
     Home,
-    Editor(editor::Editor<'model>),
+    Editor,
 }
 
-struct Gui<'model> {
-    page: Page<'model>,
+// TODO: implement derive macro for enums
+impl State for Page {
+    fn mark_resolved(&mut self) {
+        match self {
+            Page::Home => {}
+            Page::Editor => {}
+        }
+    }
 }
 
-impl<'model> App for Gui<'model> {
+#[derive(Reactive, State)]
+struct Gui {
+    page: Page,
+    editor: Signal<Option<editor::State>>,
+    message: Signal<Option<Message>>,
+}
+
+impl App for Gui {
     type Target = display::Driver;
 
     type Msg = Msg;
 
     type FocusKey = FocusKey;
     type Event = event::Event;
+    type AnyComponent<'a> = AnyComponent<'a>;
+    type AnyPrimitive<'a> = AnyPrimitive<'a>;
+    type Effect = Effect;
 
     fn new() -> Self {
-        Self { page: Page::Home }
+        Self {
+            page: Page::Editor,
+            message: Signal::new(None),
+            editor: Signal::new(None),
+        }
     }
 
     fn initial_focus_key() -> Self::FocusKey {
@@ -56,51 +107,98 @@ impl<'model> App for Gui<'model> {
         Rgb565::WHITE
     }
 
-    fn update(&mut self, msg: Self::Msg) -> Option<(FocusKey, FocusState)> {
-        // match msg {
-        //     Msg::Key(key_event) => todo!(),
-        // }
-        None
+    fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
+        match (&mut self.page, msg) {
+            (Page::Editor, Msg::Editor(editor_msg)) => {
+                self.editor.update(|editor_option| {
+                    editor_option
+                        .as_mut()
+                        .map(|editor| editor.update(editor_msg))
+                });
+            }
+            (_, Msg::LoadCompleted(result)) => match result {
+                Ok(source) => self
+                    .editor
+                    .update(|editor| *editor = Some(editor::State::new(source))),
+                Err(error) => {
+                    let text = Cow::Owned(format!(
+                        "An error occurred while loading from flash! Please try again. The error is: {:?}",
+                        error
+                    ));
+                    self.message.set(Some(Message::now(text)));
+                }
+            },
+            (_, Msg::SaveCompleted(result)) => match result {
+                Ok(name) => {
+                    let name = str::from_utf8(&name);
+
+                    match name {
+                        Ok(name) => {
+                            self.message.set(Some(Message::now(Cow::Owned(format!(
+                                "Saved to {}!",
+                                name
+                            )))));
+                        }
+                        Err(_) => {
+                            self.message.set(Some(Message::now(Cow::Borrowed(
+                                "The name of the file that was just saved to flash is invalid! Corruption has occured.",
+                            ))))
+                        }
+                    }
+                }
+                Err(error) => {
+                    let text = Cow::Owned(format!(
+                        "An error occurred while saving to flash! Please try again. The error is: {:?}",
+                        error
+                    ));
+                    self.message.set(Some(Message::now(text)));
+                }
+            },
+            _ => {}
+        }
+
+        Change::none()
     }
 
     fn view<'a>(
         &'a self,
-        v: &'a embedded_gui::view::Factory<Self::FocusKey, Self::Event, Self::Msg>,
-    ) -> embedded_gui::view::View<'a, Self::Target, Self::FocusKey, Self::Event, Self::Msg> {
-        v.view(
-            Direction::Horizontal,
-            [
-                v.spacer(),
-                // v.primitive(
-                //     Sizing::Intrinsic,
-                //     Text {
-                //         content: self.text.to_ref(),
-                //         font_style: self.font_style.to_ref(),
-                //     },
-                // ),
-                // v.spacer(),
-                // v.primitive(
-                //     Sizing::Intrinsic,
-                //     Text {
-                //         content: self.text.to_ref(),
-                //         font_style: self.font_style.to_ref(),
-                //     },
-                // ),
-                // v.component(
-                //     Sizing::Fill,
-                //     Button {
-                //         text: SignalRef::owned("Say hi!"),
-                //         font_style: self.font_style.to_ref(),
-                //         size: SignalRef::owned(Size::new(128, 32)),
-                //     },
-                //     [],
-                // ),
-            ],
-        )
+        v: &'a embedded_gui::view::Factory<Self::Event, Self::Msg, Self::FocusKey>,
+    ) -> embedded_gui::view::View<
+        'a,
+        Self::Target,
+        Self::Event,
+        Self::Msg,
+        Self::FocusKey,
+        Self::AnyComponent<'a>,
+        Self::AnyPrimitive<'a>,
+    > {
+        match &self.page {
+            Page::Home => v.view(Direction::Horizontal, [v.spacer()]),
+            Page::Editor => {
+                // let editor_widget = v.interactive(
+                //     FocusKey::Hello,
+                //     |event| Msg::Editor(editor::Msg::from_event(event)),
+                //     |_| v.component(Sizing::Fill, editor.component(), []),
+                // );
+
+                // v.view(Direction::Horizontal, [editor_widget])
+                todo!()
+            }
+        }
     }
 }
 
-enum Msg {}
+pub enum Msg {
+    Editor(editor::Msg),
+    SaveCompleted(Result<Name, sequential_storage::Error<FlashStorageError>>),
+    LoadCompleted(Result<Source, effect::LoadError>),
+}
+
+impl From<editor::Msg> for Msg {
+    fn from(editor_msg: editor::Msg) -> Msg {
+        Msg::Editor(editor_msg)
+    }
+}
 
 #[task]
 pub async fn app(mut hardware: DisplayHardware) {
@@ -117,7 +215,7 @@ pub async fn app(mut hardware: DisplayHardware) {
     let mut input_state = event::InputState::new();
 
     loop {
-        let Ok(_) = embedded_gui::app::render(&gui, &mut internal_state, &mut hardware.driver);
+        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut hardware.driver);
 
         match hardware.driver.flush() {
             Ok(_) => {}
@@ -129,8 +227,8 @@ pub async fn app(mut hardware: DisplayHardware) {
             }
         }
 
-        let events = input_state.receive_msgs(CHANNEL.receiver()).await;
+        let events = input_state.receive_msgs(channel::receiver()).await;
 
-        embedded_gui::app::dispatch(&mut gui, &mut internal_state, events);
+        embedded_gui::app::dispatch(&mut gui, &mut internal_state, events).await;
     }
 }
