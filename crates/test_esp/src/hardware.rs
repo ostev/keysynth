@@ -26,6 +26,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
     uart::{self, Uart, UartRx},
 };
+use esp_storage::FlashStorage;
 use keyboard_protocol::uart::BAUDRATE;
 use st7789v2::{ResetInterface, St7789v2};
 use static_cell::StaticCell;
@@ -36,6 +37,7 @@ use crate::{
     gui::display::{self, DisplayHardware, DisplayResetInterface, DisplaySpiInterface},
     hid::UsbHidHardware,
     keyboard::KeyboardHardware,
+    storage::StorageHardware,
 };
 
 pub struct Hardware {
@@ -50,6 +52,7 @@ pub struct Hardware {
 
     pub hid: UsbHidHardware,
     // pub debug_uart: Uart<'static, Blocking>,
+    pub storage: StorageHardware,
 }
 
 #[derive(Debug)]
@@ -215,6 +218,10 @@ impl Hardware {
             DisplayHardware { driver }
         };
 
+        let storage = StorageHardware {
+            flash: FlashStorage::new(peripherals.FLASH),
+        };
+
         // let debug_uart = Uart::new(peripherals.UART0, uart::Config::default())
         //     .map_err(InitError::UartConfigError)?
         //     .with_tx(peripherals.GPIO43)
@@ -231,6 +238,7 @@ impl Hardware {
             keyboard,
             hid,
             display,
+            storage,
         })
     }
 }
