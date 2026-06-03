@@ -3,17 +3,23 @@ use esp_hal::{Async, uart::UartRx};
 use esp_println::println;
 use keyboard_protocol::KeyboardStatus;
 
-use crate::receiver;
+mod channel {
+    use keyboard_protocol::KeyboardStatus;
 
-receiver! { KeyboardStatus }
+    use crate::channel;
+
+    channel! { KeyboardStatus }
+}
+
+pub use channel::receiver;
 
 pub struct KeyboardHardware {
     pub uart: UartRx<'static, Async>,
 }
 
 #[task]
-pub async fn keyboard_interface(mut hardware: KeyboardHardware) {
-    let sender = CHANNEL.sender();
+pub async fn keyboard_interface(mut hardware: KeyboardHardware) -> ! {
+    let sender = channel::sender();
 
     loop {
         const STATUS_SIZE: usize = core::mem::size_of::<KeyboardStatus>();
