@@ -42,12 +42,6 @@ async fn main(spawner: Spawner) -> ! {
         hardware.context_switch_interrupt.software_interrupt0,
     );
 
-    hardware
-        .storage
-        .init()
-        .map_err(|_| ())
-        .expect("Storage should not already be initialised");
-
     spawner.spawn(router().unwrap());
     // spawner.spawn(hid(hardware.hid).unwrap());
     spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());

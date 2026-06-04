@@ -26,7 +26,7 @@ mod message;
 
 use crate::{
     gui::{display::DisplayHardware, editor::source::Source, effect::Effect, message::Message},
-    storage::{self, Name},
+    storage::{self, Name, Storage, StorageHardware},
     text::ByteString,
 };
 
@@ -201,23 +201,27 @@ impl From<editor::Msg> for Msg {
 }
 
 #[task]
-pub async fn app(mut hardware: DisplayHardware) {
+pub async fn app(mut display: DisplayHardware, mut storage: StorageHardware) {
     let mut gui = Gui::new();
 
-    hardware.driver.display_on().unwrap();
-    hardware.driver.set_brightness(0xff).unwrap();
+    display.driver.display_on().unwrap();
+    display.driver.set_brightness(0xff).unwrap();
 
-    let Ok(_) = hardware.driver.clear(Gui::background_color());
-    hardware.driver.full_flush().unwrap();
+    let Ok(_) = display.driver.clear(Gui::background_color());
+    display.driver.full_flush().unwrap();
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
     let mut input_state = event::InputState::new();
 
-    loop {
-        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut hardware.driver);
+    let mut effect_context = effect::Context {
+        storage: Storage::new(storage),
+    };
 
-        match hardware.driver.flush() {
+    loop {
+        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver);
+
+        match display.driver.flush() {
             Ok(_) => {}
             Err(error) => {
                 println!(
@@ -229,6 +233,7 @@ pub async fn app(mut hardware: DisplayHardware) {
 
         let events = input_state.receive_msgs(channel::receiver()).await;
 
-        embedded_gui::app::dispatch(&mut gui, &mut internal_state, events).await;
+        embedded_gui::app::dispatch(&mut gui, &mut effect_context, &mut internal_state, events)
+            .await;
     }
 }

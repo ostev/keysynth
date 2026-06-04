@@ -45,39 +45,6 @@ const PAGE_CACHE_COUNT: usize = 4;
 
 pub type Flash = BlockingAsync<FlashStorage<'static>>;
 
-static STORAGE: OnceLock<Mutex<RawMutex, Storage>> = OnceLock::new();
-
-pub async fn save<const N: usize>(
-    name: &Name,
-    bytes: &[u8; N],
-) -> Result<(), sequential_storage::Error<FlashStorageError>> {
-    let mut data_buffer = [0; MAX_SIZE];
-
-    STORAGE
-        .get()
-        .await
-        .lock()
-        .await
-        .map
-        .store_item(&mut data_buffer, name, bytes)
-        .await
-}
-
-pub async fn load<const N: usize>(name: &Name) -> Result<[u8; N], LoadError> {
-    let mut data_buffer = [0; MAX_SIZE];
-
-    STORAGE
-        .get()
-        .await
-        .lock()
-        .await
-        .map
-        .fetch_item(&mut data_buffer, name)
-        .await
-        .map_err(LoadError::Flash)?
-        .ok_or(LoadError::NotFound)
-}
-
 #[derive(Debug)]
 pub enum LoadError {
     NotFound,
@@ -88,18 +55,38 @@ pub struct Storage {
     map: MapStorage<Name, Flash, PageStateCache<PAGE_CACHE_COUNT>>,
 }
 
-pub struct StorageHardware {
-    pub flash: esp_storage::FlashStorage<'static>,
-}
-
-impl StorageHardware {
-    pub fn init(self) -> Result<(), Mutex<RawMutex, Storage>> {
-        STORAGE.init(Mutex::new(Storage {
+impl Storage {
+    pub fn new(hardware: StorageHardware) -> Storage {
+        Storage {
             map: MapStorage::new(
-                BlockingAsync::new(self.flash),
+                BlockingAsync::new(hardware.flash),
                 MAP_CONFIG,
                 PageStateCache::<PAGE_CACHE_COUNT>::new(),
             ),
-        }))
+        }
     }
+
+    pub async fn load<const N: usize>(&mut self, name: &Name) -> Result<[u8; N], LoadError> {
+        let mut data_buffer = [0; MAX_SIZE];
+
+        self.map
+            .fetch_item(&mut data_buffer, name)
+            .await
+            .map_err(LoadError::Flash)?
+            .ok_or(LoadError::NotFound)
+    }
+
+    pub async fn save<const N: usize>(
+        &mut self,
+        name: &Name,
+        bytes: &[u8; N],
+    ) -> Result<(), sequential_storage::Error<FlashStorageError>> {
+        let mut data_buffer = [0; MAX_SIZE];
+
+        self.map.store_item(&mut data_buffer, name, bytes).await
+    }
+}
+
+pub struct StorageHardware {
+    pub flash: esp_storage::FlashStorage<'static>,
 }
