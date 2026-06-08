@@ -2,15 +2,16 @@ use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
 use embedded_graphics::{
     draw_target::DrawTarget,
+    mono_font::MonoTextStyleBuilder,
     pixelcolor::{Rgb565, RgbColor},
 };
 use embedded_gui::{
     app::{App, Change, State},
-    component::{any_component, button::Button},
+    component::{any_component, button::Button, group::Group},
     interactive::FocusState,
     layout::{Direction, Sizing},
     primitive::{any_primitive, text::Text},
-    signal::{Reactive, Signal},
+    signal::{Reactive, Signal, SignalRef, Source},
 };
 use esp_println::println;
 use esp_storage::FlashStorageError;
@@ -18,15 +19,24 @@ use esp_sync::RawMutex;
 use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus};
 use st7789v2::{DriverResult, St7789v2};
 
+mod background;
+pub mod colors;
 pub mod display;
 mod editor;
 mod effect;
 mod event;
+mod home;
 mod message;
+mod save_dialog;
 
 use crate::{
-    gui::{display::DisplayHardware, editor::source::Source, effect::Effect, message::Message},
-    storage::{self, Name, Storage, StorageHardware},
+    gui::{
+        display::DisplayHardware,
+        editor::line::{self, LineEditor},
+        effect::Effect,
+        message::Message,
+    },
+    storage::{self, NAME_LENGTH, Name, Storage, StorageHardware},
     text::ByteString,
 };
 
@@ -41,20 +51,36 @@ pub use channel::sender;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Hello,
+    Editor(editor::FocusKey),
+    Home(home::FocusKey),
+}
+
+impl From<editor::FocusKey> for FocusKey {
+    fn from(key: editor::FocusKey) -> Self {
+        FocusKey::Editor(key)
+    }
+}
+
+impl From<home::FocusKey> for FocusKey {
+    fn from(key: home::FocusKey) -> Self {
+        FocusKey::Home(key)
+    }
 }
 
 #[derive(Reactive)]
 #[any_component(target = display::Driver, event = event::Event, msg = Msg, focus_key = FocusKey)]
 enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
+    Group(Group),
 }
 
 #[derive(Reactive)]
 #[any_primitive(target = display::Driver)]
 enum AnyPrimitive<'a> {
     EditorView(editor::View<'a>),
-    Spacer(embedded_gui::primitive::spacer::Spacer<'a>),
-    Text(Text<'a, display::Color, &'a str>),
+    Spacer(embedded_gui::primitive::spacer::Spacer),
+    TextStr(Text<'a, display::Color, &'a str>),
+    LineEditor(LineEditor<'a, { NAME_LENGTH }>),
 }
 
 #[derive(Reactive)]
@@ -76,8 +102,8 @@ impl State for Page {
 #[derive(Reactive, State)]
 struct Gui {
     page: Page,
-    editor: Signal<Option<editor::State>>,
-    message: Signal<Option<Message>>,
+    editor: Source<editor::State>,
+    message: Source<Option<Message>>,
 }
 
 impl App for Gui {
@@ -94,8 +120,8 @@ impl App for Gui {
     fn new() -> Self {
         Self {
             page: Page::Editor,
-            message: Signal::new(None),
-            editor: Signal::new(None),
+            message: Source::new(None),
+            editor: Source::new(editor::State::default()),
         }
     }
 
@@ -110,16 +136,12 @@ impl App for Gui {
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
         match (&mut self.page, msg) {
             (Page::Editor, Msg::Editor(editor_msg)) => {
-                self.editor.update(|editor_option| {
-                    editor_option
-                        .as_mut()
-                        .map(|editor| editor.update(editor_msg))
-                });
+                return self.editor.update(|editor| editor.update(editor_msg));
             }
             (_, Msg::LoadCompleted(result)) => match result {
                 Ok(source) => self
                     .editor
-                    .update(|editor| *editor = Some(editor::State::new(source))),
+                    .update(|editor| *editor = editor::State::new(source)),
                 Err(error) => {
                     let text = Cow::Owned(format!(
                         "An error occurred while loading from flash! Please try again. The error is: {:?}",
@@ -173,15 +195,32 @@ impl App for Gui {
         Self::AnyPrimitive<'a>,
     > {
         match &self.page {
-            Page::Home => v.view(Direction::Horizontal, [v.spacer()]),
+            Page::Home => v.view(
+                Direction::Horizontal,
+                [
+                    v.spacer(),
+                    v.primitive(
+                        Sizing::Fill,
+                        Text {
+                            content: SignalRef::constant(&"Hello!!!!"),
+                            font_style: Signal::constant(
+                                MonoTextStyleBuilder::new()
+                                    .font(&embedded_graphics::mono_font::ascii::FONT_10X20)
+                                    .text_color(colors::TEXT)
+                                    .build(),
+                            ),
+                        },
+                    ),
+                ],
+            ),
             Page::Editor => {
-                // let editor_widget = v.interactive(
-                //     FocusKey::Hello,
+                // let editor = v.interactive(
+                //     FocusKey::Editor,
                 //     |event| Msg::Editor(editor::Msg::from_event(event)),
-                //     |_| v.component(Sizing::Fill, editor.component(), []),
+                //     |_| v.primitive(Sizing::Fill, editor::View::new(self.editor.to_ref())),
                 // );
 
-                // v.view(Direction::Horizontal, [editor_widget])
+                // v.view(Direction::Vertical, [editor])
                 todo!()
             }
         }
@@ -191,7 +230,9 @@ impl App for Gui {
 pub enum Msg {
     Editor(editor::Msg),
     SaveCompleted(Result<Name, sequential_storage::Error<FlashStorageError>>),
-    LoadCompleted(Result<Source, effect::LoadError>),
+    LoadCompleted(Result<editor::source::Source, effect::LoadError>),
+    LineEditor(line::Msg),
+    CloseSaveDialog,
 }
 
 impl From<editor::Msg> for Msg {
@@ -201,7 +242,7 @@ impl From<editor::Msg> for Msg {
 }
 
 #[task]
-pub async fn app(mut display: DisplayHardware, mut storage: StorageHardware) {
+pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
     let mut gui = Gui::new();
 
     display.driver.display_on().unwrap();

@@ -5,12 +5,13 @@ use alloc::{
     format,
 };
 use embassy_time::{Duration, Instant};
-use embedded_gui::size::Size;
+use embedded_gui::{app::Change, size::Size};
 use embedded_storage_async::nor_flash::NorFlash;
 use keyboard_protocol::{Key, Modifier, StandardKey};
 
 use crate::{
     gui::{
+        self,
         editor::{
             clipboard::Clipboard,
             history::{self, History},
@@ -36,6 +37,12 @@ pub struct EditorState {
     pub(super) lines_visible: usize,
 }
 
+impl Default for EditorState {
+    fn default() -> Self {
+        Self::new(Source::default())
+    }
+}
+
 impl EditorState {
     pub fn new(source: Source) -> Self {
         Self {
@@ -55,29 +62,29 @@ impl EditorState {
         unsafe { self.source.to_string_unchecked() }
     }
 
-    fn intrinsic_size(&self) -> Size {
-        let font = embedded_graphics::mono_font::ascii::FONT_8X13;
+    // fn intrinsic_size(&self) -> Size {
+    //     let font = embedded_graphics::mono_font::ascii::FONT_8X13;
 
-        let char_width = font.character_size.width as u16;
-        let line_height = font.character_size.height as u16;
+    //     let char_width = font.character_size.width as u16;
+    //     let line_height = font.character_size.height as u16;
 
-        let max_chars = self
-            .source
-            .lines
-            .iter()
-            // Since we only support ASCII, `len` works fine here as one character
-            // is always one byte.
-            .map(|line| line.len() as u16)
-            .max()
-            .unwrap_or(0);
+    //     let max_chars = self
+    //         .source
+    //         .lines
+    //         .iter()
+    //         // Since we only support ASCII, `len` works fine here as one character
+    //         // is always one byte.
+    //         .map(|line| line.len() as u16)
+    //         .max()
+    //         .unwrap_or(0);
 
-        Size::new(
-            max_chars * char_width,
-            self.source.lines.len() as u16 * line_height,
-        )
-    }
+    //     Size::new(
+    //         max_chars * char_width,
+    //         self.source.lines.len() as u16 * line_height,
+    //     )
+    // }
 
-    pub fn update(&mut self, msg: Msg) -> Option<Effect> {
+    pub fn update(&mut self, msg: Msg) -> Change<gui::Msg, gui::FocusKey, gui::Effect> {
         self.clear_message_if_old();
 
         match msg {
@@ -121,21 +128,26 @@ impl EditorState {
                     self.source.apply(edit);
                 }
             }
-            Msg::Save => match self.source.serialize() {
-                Ok(serialized) => return Some(Effect::Save(self.source.name, serialized)),
-                Err(_) => {
-                    let text = Cow::Borrowed(
-                        "A serialization error occurred while saving! Please try again.",
-                    );
+            Msg::Save => match self.source.name {
+                Some(name) => match self.source.serialize() {
+                    Ok(serialized) => {
+                        return Change::none().with_effect(Effect::Save(name, serialized));
+                    }
+                    Err(_) => {
+                        let text = Cow::Borrowed(
+                            "A serialization error occurred while saving! Please try again.",
+                        );
 
-                    self.message = Some(Message::now(text))
-                }
+                        self.message = Some(Message::now(text))
+                    }
+                },
+                None => todo!(),
             },
 
             Msg::NoOp => {}
         };
 
-        None
+        Change::none()
     }
 
     fn clear_message_if_old(&mut self) {
@@ -271,23 +283,6 @@ impl EditorState {
             end: Position::new(self.cursor.line, line_len),
         });
     }
-
-    fn move_cursor_after_text(&mut self, text: &str) {
-        let mut line = self.cursor.line;
-        let mut column = self.cursor.column;
-
-        for ch in text.chars() {
-            if ch == '\n' {
-                line += 1;
-                column = 0;
-            } else {
-                column += 1;
-            }
-        }
-
-        self.cursor = Position::new(line, column);
-        self.clamp_cursor_column();
-    }
 }
 
 pub enum Msg {
@@ -337,28 +332,36 @@ impl Msg {
                             if is_super {
                                 Msg::JumpSelection(Direction::Left)
                             } else {
-                                Msg::MoveInsert(Direction::Left)
+                                Msg::MoveSelection(Direction::Left)
                             }
                         }
                         StandardKey::Right if is_shift => {
                             if is_super {
                                 Msg::JumpSelection(Direction::Right)
                             } else {
-                                Msg::MoveInsert(Direction::Right)
+                                Msg::MoveSelection(Direction::Right)
                             }
                         }
                         StandardKey::Up if is_shift => {
                             if is_super {
                                 Msg::JumpSelection(Direction::Up)
                             } else {
-                                Msg::MoveInsert(Direction::Up)
+                                Msg::MoveSelection(Direction::Up)
                             }
                         }
                         StandardKey::Down if is_shift => {
                             if is_super {
                                 Msg::JumpSelection(Direction::Down)
                             } else {
-                                Msg::MoveInsert(Direction::Down)
+                                Msg::MoveSelection(Direction::Down)
+                            }
+                        }
+
+                        StandardKey::A if is_super => {
+                            if is_shift {
+                                Msg::SelectLine
+                            } else {
+                                Msg::SelectAll
                             }
                         }
 
@@ -368,13 +371,11 @@ impl Msg {
                         StandardKey::Down if is_super => Msg::JumpInsert(Direction::Down),
                         StandardKey::Up if is_super => Msg::JumpInsert(Direction::Up),
 
-                        StandardKey::A if is_super => Msg::SelectAll,
-
                         // Move cursor
-                        StandardKey::Left => Msg::MoveSelection(Direction::Left),
-                        StandardKey::Right => Msg::MoveSelection(Direction::Right),
-                        StandardKey::Down => Msg::MoveSelection(Direction::Down),
-                        StandardKey::Up => Msg::MoveSelection(Direction::Up),
+                        StandardKey::Left => Msg::MoveInsert(Direction::Left),
+                        StandardKey::Right => Msg::MoveInsert(Direction::Right),
+                        StandardKey::Down => Msg::MoveInsert(Direction::Down),
+                        StandardKey::Up => Msg::MoveInsert(Direction::Up),
 
                         // Clipboard
                         StandardKey::C if is_super => Msg::Copy,

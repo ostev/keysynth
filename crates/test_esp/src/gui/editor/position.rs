@@ -1,4 +1,13 @@
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    geometry::Point,
+    mono_font::MonoFont,
+    pixelcolor::Rgb565,
+    primitives::{CornerRadii, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StyledDrawable},
+};
 use serde::{Deserialize, Serialize};
+
+use crate::{gui::colors, text};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
@@ -47,6 +56,30 @@ pub struct SelectionRange {
 impl SelectionRange {
     pub const fn new(start: Position, end: Position) -> SelectionRange {
         SelectionRange { start, end }
+    }
+
+    pub fn draw<T: DrawTarget<Color = Rgb565>>(
+        &self,
+        font: &MonoFont,
+        line_start: Point,
+        target: &mut T,
+    ) -> Result<(), T::Error> {
+        let rounded = RoundedRectangle::new(
+            Rectangle::new(
+                line_start + Point::new(text::width(font, self.start.column as u32) as i32, 0),
+                embedded_graphics::geometry::Size::new(
+                    text::width(font, self.end.column as u32),
+                    font.character_size.height,
+                ),
+            ),
+            CornerRadii::new(embedded_graphics::geometry::Size::new(2, 2)),
+        );
+        rounded.draw_styled(
+            &PrimitiveStyleBuilder::new()
+                .fill_color(colors::SELECTION)
+                .build(),
+            target,
+        )
     }
 }
 

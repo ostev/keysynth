@@ -25,7 +25,7 @@ impl Clipboard {
         }
     }
 
-    pub fn get(&self) -> ByteStr {
+    pub fn get(&self) -> &ByteStr {
         &self.text
     }
 }

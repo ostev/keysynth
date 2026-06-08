@@ -6,6 +6,10 @@ use embassy_usb::{
     },
     driver::host::pipe::Out,
 };
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    pixelcolor::{Rgb565, RgbColor},
+};
 use esp_hal::{
     Async, Blocking,
     clock::{ClockConfig, CpuClock, ll::UartFunctionClockConfig},
@@ -19,13 +23,14 @@ use esp_hal::{
     },
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     otg_fs::{Usb, UsbBus},
-    peripherals::{GPIO4, Peripherals, TIMG0},
+    peripherals::{GPIO4, PSRAM, Peripherals, TIMG0},
     spi::{self, master::Spi},
     system::CpuControl,
     time::Rate,
     timer::timg::TimerGroup,
     uart::{self, Uart, UartRx},
 };
+use esp_println::println;
 use esp_storage::FlashStorage;
 use keyboard_protocol::uart::BAUDRATE;
 use st7789v2::{ResetInterface, St7789v2};
@@ -34,7 +39,10 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use crate::{
     audio::SAMPLE_RATE,
-    gui::display::{self, DisplayHardware, DisplayResetInterface, DisplaySpiInterface},
+    gui::{
+        self,
+        display::{self, DisplayHardware, DisplayResetInterface, DisplaySpiInterface},
+    },
     hid::UsbHidHardware,
     keyboard::KeyboardHardware,
     storage::StorageHardware,
@@ -67,6 +75,7 @@ pub enum InitError {
 impl Hardware {
     pub fn new() -> Result<Hardware, InitError> {
         let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+        esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
         let context_switch_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
         let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
@@ -97,6 +106,8 @@ impl Hardware {
             AnalogAudioHardware { i2s_tx, tx_buffer }
         };
 
+        println!("Audio setup complete!");
+
         let keyboard = {
             let uart = UartRx::new(
                 peripherals.UART1,
@@ -108,6 +119,8 @@ impl Hardware {
 
             KeyboardHardware { uart }
         };
+
+        println!("Keyboard setup complete!");
 
         let (hid, usb_audio) = {
             static EP_OUT_BUFFER: StaticCell<[u8; 1024]> = StaticCell::new();
@@ -179,6 +192,8 @@ impl Hardware {
             (hid, audio)
         };
 
+        println!("USB setup complete!");
+
         let display = {
             let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
 
@@ -187,14 +202,18 @@ impl Hardware {
             let dma_tx_buf =
                 DmaTxBuf::new(tx_descriptors, tx_buffer).map_err(InitError::DmaBufError)?;
 
-            let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> =
-                Spi::new(peripherals.SPI2, spi::master::Config::default())
-                    .map_err(InitError::SpiConfigError)?
-                    .with_sck(peripherals.GPIO2)
-                    .with_cs(peripherals.GPIO3)
-                    .with_mosi(peripherals.GPIO1)
-                    .with_dma(peripherals.DMA_CH1)
-                    .with_buffers(dma_rx_buf, dma_tx_buf);
+            let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
+                peripherals.SPI2,
+                spi::master::Config::default()
+                    .with_frequency(Rate::from_mhz(1))
+                    .with_mode(spi::Mode::_0),
+            )
+            .map_err(InitError::SpiConfigError)?
+            .with_sck(peripherals.GPIO2)
+            .with_cs(peripherals.GPIO3)
+            .with_mosi(peripherals.GPIO1)
+            .with_dma(peripherals.DMA_CH1)
+            .with_buffers(dma_rx_buf, dma_tx_buf);
 
             let display_interface = DisplaySpiInterface::new(
                 spi,
@@ -208,19 +227,26 @@ impl Hardware {
 
             let mut delay = Delay::new();
 
-            let driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
+            let mut driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
                 .buffered::<display::Color>(st7789v2::Framebuffer::heap::<
                     { display::FRAMEBUFFER_SIZE },
                 >())
                 .build(st7789v2::ColorMode::Rgb565, &mut delay)
                 .map_err(InitError::DisplayInitError)?;
 
+            driver.clear(gui::colors::BACKGROUND_LIGHT);
+            driver.full_flush().unwrap();
+
             DisplayHardware { driver }
         };
+
+        println!("Display setup complete!");
 
         let storage = StorageHardware {
             flash: FlashStorage::new(peripherals.FLASH),
         };
+
+        println!("Storage setup complete!");
 
         // let debug_uart = Uart::new(peripherals.UART0, uart::Config::default())
         //     .map_err(InitError::UartConfigError)?

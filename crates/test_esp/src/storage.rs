@@ -40,6 +40,8 @@ pub type SaveResult = Result<(), ()>;
 /// Names are null-terminated arrays
 pub type Name = [ByteChar; 10];
 
+pub const NAME_LENGTH: usize = 10;
+
 const MAP_CONFIG: MapConfig<Flash> = MapConfig::new(0xc00000..0xfff000);
 const PAGE_CACHE_COUNT: usize = 4;
 

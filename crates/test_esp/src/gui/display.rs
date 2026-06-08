@@ -2,7 +2,7 @@ use embedded_graphics::pixelcolor::Rgb565;
 use esp_hal::{Blocking, gpio::Output, spi::master::SpiDmaBus};
 use st7789v2::{ControllerInterface, DisplaySize, ResetInterface, St7789v2};
 
-pub const SIZE: DisplaySize = DisplaySize::new(240, 280);
+pub const SIZE: DisplaySize = DisplaySize::new(240, 260);
 
 pub const FRAMEBUFFER_SIZE: usize = st7789v2::framebuffer_size(SIZE, st7789v2::ColorMode::Rgb565);
 

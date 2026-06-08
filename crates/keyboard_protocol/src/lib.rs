@@ -305,6 +305,14 @@ impl StandardKey {
             _ => None,
         }
     }
+
+    pub fn to_char(self, is_shift: bool) -> Option<u8> {
+        if is_shift {
+            self.to_char_upper()
+        } else {
+            self.to_char_lower()
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

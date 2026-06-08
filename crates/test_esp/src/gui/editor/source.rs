@@ -18,9 +18,18 @@ use crate::{
 pub const MAX_SIZE: usize = 2 * 1024;
 
 pub struct Source {
-    pub name: Name,
+    pub name: Option<Name>,
     // TODO: replace with a gap buffer for better insert performance
     pub lines: Vec<ByteString>,
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self {
+            name: None,
+            lines: Vec::new(),
+        }
+    }
 }
 
 impl Source {
@@ -54,13 +63,13 @@ impl Source {
         }
     }
 
-    pub fn group_insert(&mut self, text: ByteStr, start: Position) -> Position {
+    pub fn group_insert(&mut self, text: &ByteStr, start: Position) -> Position {
         text.iter().fold(start, |position, character| {
             self.insert(*character, position)
         })
     }
 
-    pub fn group_delete(&mut self, text: ByteStr, start: Position) -> Position {
+    pub fn group_delete(&mut self, text: &ByteStr, start: Position) -> Position {
         text.iter().fold(start, |position, character| {
             self.delete(*character, position)
         })
@@ -125,7 +134,7 @@ impl Source {
 
     fn from_serialized(name: Name, serialized: SerializedSource) -> Source {
         Source {
-            name,
+            name: Some(name),
             lines: serialized
                 .text
                 .split(|&character| character == b'\n')

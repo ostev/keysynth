@@ -4,6 +4,7 @@
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+#![feature(generic_const_exprs)]
 
 extern crate alloc;
 

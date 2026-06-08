@@ -4,9 +4,7 @@ runner = "espflash flash --monitor --chip esp32s3"
 [env]
 
 [build]
-rustflags = [
-  "-C", "link-arg=-nostartfiles",
-]
+rustflags = ["-C", "link-arg=-nostartfiles", "-C", "force-frame-pointers"]
 
 target = "xtensa-esp32s3-none-elf"
 
