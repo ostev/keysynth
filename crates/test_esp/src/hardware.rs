@@ -234,6 +234,7 @@ impl Hardware {
                 .build(st7789v2::ColorMode::Rgb565, &mut delay)
                 .map_err(InitError::DisplayInitError)?;
 
+            driver.hard_reset().unwrap();
             driver.clear(gui::colors::BACKGROUND_LIGHT);
             driver.full_flush().unwrap();
 

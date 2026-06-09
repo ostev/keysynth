@@ -131,7 +131,7 @@ impl<Reset: embedded_hal::digital::OutputPin> ResetInterface for DisplayResetInt
         esp_hal::rom::ets_delay_us(10);
         self.reset.set_high()?;
 
-        // TODO: wait 120ms?
+        esp_hal::rom::ets_delay_us(140_1000);
 
         Ok(())
     }
