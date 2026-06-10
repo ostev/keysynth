@@ -10,6 +10,7 @@ use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{Rgb565, RgbColor},
 };
+use esp_alloc::export::enumset::__internal::EnumSetTypeRepr;
 use esp_hal::{
     Async, Blocking,
     clock::{ClockConfig, CpuClock, ll::UartFunctionClockConfig},
@@ -40,8 +41,8 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use crate::{
     audio::SAMPLE_RATE,
     gui::{
-        self,
-        display::{self, DisplayHardware, DisplayResetInterface, DisplaySpiInterface},
+        self, colors,
+        display::{self, DisplayHardware},
     },
     hid::UsbHidHardware,
     keyboard::KeyboardHardware,
@@ -49,8 +50,8 @@ use crate::{
 };
 
 pub struct Hardware {
-    pub timer_group_0: TimerGroup<'static, TIMG0<'static>>,
-    pub context_switch_interrupt: SoftwareInterruptControl<'static>,
+    // pub timer_group_0: TimerGroup<'static, TIMG0<'static>>,
+    // pub context_switch_interrupt: SoftwareInterruptControl<'static>,
     pub cpu_control: CpuControl<'static>,
 
     pub audio: AudioHardware,
@@ -69,16 +70,21 @@ pub enum InitError {
     UartConfigError(uart::ConfigError),
     SpiConfigError(spi::master::ConfigError),
     DmaBufError(dma::DmaBufError),
-    DisplayInitError(display::DriverError),
+    // DisplayInitError(display::DriverError),
 }
 
 impl Hardware {
-    pub fn new() -> Result<Hardware, InitError> {
+    pub async fn new() -> Result<Hardware, InitError> {
         let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
         esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
         let context_switch_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
         let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+
+        esp_rtos::start(
+            timer_group_0.timer0,
+            context_switch_interrupt.software_interrupt0,
+        );
 
         let cpu_control = CpuControl::new(peripherals.CPU_CTRL);
 
@@ -205,7 +211,7 @@ impl Hardware {
             let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
                 peripherals.SPI2,
                 spi::master::Config::default()
-                    .with_frequency(Rate::from_mhz(1))
+                    .with_frequency(Rate::from_mhz(20))
                     .with_mode(spi::Mode::_0),
             )
             .map_err(InitError::SpiConfigError)?
@@ -215,28 +221,48 @@ impl Hardware {
             .with_dma(peripherals.DMA_CH1)
             .with_buffers(dma_rx_buf, dma_tx_buf);
 
-            let display_interface = DisplaySpiInterface::new(
-                spi,
-                Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()),
-            );
-            let reset_interface = DisplayResetInterface::new(Output::new(
-                peripherals.GPIO5,
-                Level::Low,
-                OutputConfig::default(),
-            ));
+            // let display_interface = DisplaySpiInterface::new(
+            //     spi,
+            //     Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()),
+            // );
+            // let reset_interface = DisplayResetInterface::new(Output::new(
+            //     peripherals.GPIO5,
+            //     Level::Low,
+            //     OutputConfig::default(),
+            // ));
 
-            let mut delay = Delay::new();
+            let dc_pin = Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default());
+            let reset_pin = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
 
-            let mut driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
-                .buffered::<display::Color>(st7789v2::Framebuffer::heap::<
-                    { display::FRAMEBUFFER_SIZE },
-                >())
-                .build(st7789v2::ColorMode::Rgb565, &mut delay)
-                .map_err(InitError::DisplayInitError)?;
+            // let mut delay = Delay::new();
 
-            driver.hard_reset().unwrap();
-            driver.clear(gui::colors::BACKGROUND_LIGHT);
-            driver.full_flush().unwrap();
+            // let mut driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
+            //     .buffered::<display::Color>(st7789v2::Framebuffer::heap::<
+            //         { display::FRAMEBUFFER_SIZE },
+            //     >())
+            //     .build(st7789v2::ColorMode::Rgb565, &mut delay)
+            //     .map_err(InitError::DisplayInitError)?;
+
+            let mut driver = display::Driver::init(
+                spi.into_async(),
+                reset_pin,
+                dc_pin,
+                display::Orientation::Vertical,
+            )
+            .await;
+            let rng = esp_hal::rng::Rng::new();
+            driver
+                .clear_async(Rgb565::new(
+                    rng.random() as u8,
+                    rng.random() as u8,
+                    rng.random() as u8,
+                ))
+                .await;
+            println!("Display setup complete!");
+
+            // driver.hard_reset().unwrap();
+            // driver.clear(gui::colors::BACKGROUND_LIGHT);
+            // driver.full_flush().unwrap();
 
             DisplayHardware { driver }
         };
@@ -255,8 +281,8 @@ impl Hardware {
         //     .with_rx(peripherals.GPIO44);
 
         Ok(Hardware {
-            context_switch_interrupt,
-            timer_group_0,
+            // context_switch_interrupt,
+            // timer_group_0,
             cpu_control,
             audio: AudioHardware {
                 analog: analog_audio,

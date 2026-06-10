@@ -2220,6 +2220,8 @@ dependencies = [
  "embedded-graphics",
  "embedded-gui",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "embedded-io-async 0.7.0",
  "embedded-storage-async",
  "enumflags2",
  "esp-alloc",

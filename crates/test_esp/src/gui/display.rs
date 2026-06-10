@@ -1,9 +1,20 @@
-use embedded_graphics::pixelcolor::Rgb565;
+use core::convert::Infallible;
+
+use embassy_time::Timer;
+use embedded_graphics::{
+    Pixel,
+    draw_target::DrawTarget,
+    geometry::{Dimensions, Point, Size},
+    pixelcolor::{Rgb565, raw::ToBytes},
+    primitives::Rectangle,
+};
 use embedded_hal::digital::OutputPin;
 use esp_hal::{
     Async, Blocking, DriverMode,
+    gpio::{Output, dedicated::OutputDriver},
     spi::{master::SpiDmaBus, slave::Spi},
 };
+use esp_println::println;
 use st7789v2::{ControllerInterface, DisplaySize, ResetInterface, St7789v2};
 
 pub const SIZE: DisplaySize = DisplaySize::new(240, 260);
@@ -12,23 +23,48 @@ pub const FRAMEBUFFER_SIZE: usize = st7789v2::framebuffer_size(SIZE, st7789v2::C
 
 pub type Color = Rgb565;
 
-pub struct DisplayHardware<ResetPin: OutputPin> {
-    pub driver: Driver<ResetPin>,
+pub struct DisplayHardware {
+    pub driver: Driver,
 }
 
-pub struct Driver<ResetPin: OutputPin> {
-    pub spi: Spi<'static, Async>,
-    pub reset_pin: ResetPin,
+pub struct Driver {
+    spi: SpiDmaBus<'static, Async>,
+    reset_pin: Output<'static>,
+    dc_pin: Output<'static>,
+
+    orientation: Orientation,
 }
 
-impl<ResetPin: OutputPin> Driver<ResetPin> {
-    // pub fn init(&mut self) {
-    //     self.
-    // }
+const WIDTH: usize = 240;
+const HEIGHT: usize = 280;
+
+impl Driver {
+    pub async fn init(
+        spi: SpiDmaBus<'static, Async>,
+        reset_pin: Output<'static>,
+        dc_pin: Output<'static>,
+        orientation: Orientation,
+    ) -> Driver {
+        let mut driver = Driver {
+            spi,
+            reset_pin,
+            dc_pin,
+            orientation,
+        };
+
+        driver.reset();
+        println!("Reset!");
+        driver.set_orientation(orientation).await;
+        println!("Orient!");
+        driver.init_registers().await;
+        println!("Register!");
+
+        driver
+    }
 
     /// Synchronously reset the display
     pub fn reset(&mut self) {
-        let delay = || esp_hal::rom::ets_delay_us(10_000_000);
+        let delay = || esp_hal::rom::ets_delay_us(120_000);
 
         self.reset_pin.set_high();
         delay();
@@ -38,12 +74,203 @@ impl<ResetPin: OutputPin> Driver<ResetPin> {
         delay();
     }
 
-    fn write_command(&mut self, command: ()) {
-        self.spi.
+    async fn write_command(&mut self, command: u8) {
+        self.dc_pin.set_low();
+        self.spi.write_async(&[command]).await.unwrap();
     }
 
-    pub fn init(&mut self) {
-        self.reset();
-        // self.
+    async fn write_data(&mut self, data: &[u8]) {
+        self.dc_pin.set_high();
+        self.spi.write_async(data).await.unwrap();
+    }
+
+    async fn write_packet(&mut self, command: u8, data: &[u8]) {
+        self.write_command(command).await;
+        self.write_data(data).await;
+    }
+
+    async fn init_registers(&mut self) {
+        for _ in 0..3 {
+            self.write_command(0xaa).await;
+        }
+        self.write_packet(0x36, &[0x00]).await;
+
+        self.write_packet(0x3a, &[0x05]).await;
+
+        self.write_packet(0xb2, &[0x0b, 0x0b, 0x00, 0x33, 0x35])
+            .await;
+
+        self.write_packet(0xb7, &[0x2c]).await;
+
+        self.write_packet(0xc2, &[0x01]).await;
+
+        self.write_packet(0xc3, &[0x0d]).await;
+
+        // VDV, 0x20 -> 0V
+        self.write_packet(0xc4, &[0x20]).await;
+
+        // 0x13 -> 60Hz
+        self.write_packet(0xc6, &[0x13]).await;
+
+        self.write_packet(0xd0, &[0xa4, 0xa1]).await;
+
+        self.write_packet(0xd6, &[0xa1]).await;
+
+        self.write_packet(
+            0xe0,
+            &[
+                0xf0, 0x06, 0x0b, 0x0a, 0x09, 0x26, 0x29, 0x33, 0x41, 0x18, 0x16, 0x15, 0x29, 0x2d,
+            ],
+        )
+        .await;
+
+        self.write_packet(
+            0x31,
+            &[
+                0xf0, 0x04, 0x08, 0x08, 0x07, 0x03, 0x28, 0x32, 0x40, 0x3b, 0x19, 0x18, 0x2a, 0x2e,
+            ],
+        )
+        .await;
+
+        self.write_packet(0xe4, &[0x25, 0x00, 0x00]).await;
+
+        self.write_command(0x21).await;
+        self.write_command(0x11).await;
+
+        Timer::after_millis(120).await;
+        self.write_command(0x29).await;
+    }
+
+    async fn set_orientation(&mut self, orientation: Orientation) {
+        let memory_access_register = match self.orientation {
+            Orientation::Horizontal => 0x70,
+            Orientation::Vertical => 0x00,
+        };
+
+        self.orientation = orientation;
+
+        self.write_packet(0x36, &[memory_access_register]).await;
+    }
+
+    async fn set_window(&mut self, window: Window) {
+        // The vertical offset of the display controller
+        const ROW_START: u16 = 20;
+
+        let Window {
+            x_start,
+            y_start,
+            x_end,
+            y_end,
+        } = match self.orientation {
+            Orientation::Vertical => Window {
+                x_start: window.y_start,
+                x_end: window.y_end,
+
+                y_start: window.x_start + ROW_START,
+                y_end: window.x_end + ROW_START,
+            },
+            Orientation::Horizontal => Window {
+                x_start: window.x_start + ROW_START,
+                x_end: window.x_end + ROW_START,
+
+                y_start: window.y_start,
+                y_end: window.y_end,
+            },
+        };
+
+        let x_end_inclusive = x_end - 1;
+        let y_end_inclusive = y_end - 1;
+
+        // Sets the x coordinates
+        self.write_packet(
+            0x2a,
+            &[
+                // Send the x start position as top 8
+                // and then bottom 8 bits:
+                (x_start >> 8) as u8,
+                x_start as u8,
+                // Same for x end:
+                (x_end_inclusive >> 8) as u8,
+                x_end_inclusive as u8,
+            ],
+        )
+        .await;
+        self.write_packet(
+            0x2b,
+            &[
+                (y_start >> 8) as u8,
+                y_start as u8,
+                (y_end_inclusive >> 8) as u8,
+                y_end_inclusive as u8,
+            ],
+        )
+        .await;
+
+        self.write_command(0x2c).await;
+    }
+
+    pub async fn clear_async(&mut self, color: Color) {
+        let (width, height) = self.orientation.dimensions();
+
+        self.set_window(Window {
+            x_start: 0,
+            y_start: 0,
+            x_end: width as u16,
+            y_end: height as u16,
+        })
+        .await;
+
+        // Allocate the stack space for the clear row for the largest dimension
+        let clear_row_buffer = [color.to_be_bytes(); if WIDTH > HEIGHT { WIDTH } else { HEIGHT }];
+        // Get a slice of just the part we need
+        let clear_row = clear_row_buffer[0..width].as_flattened();
+
+        for _ in 0..height {
+            self.write_data(clear_row).await;
+        }
+    }
+}
+
+impl Dimensions for Driver {
+    fn bounding_box(&self) -> Rectangle {
+        let (width, height) = self.orientation.dimensions();
+
+        Rectangle::new(Point::zero(), Size::new(width as u32, height as u32))
+    }
+}
+
+impl DrawTarget for Driver {
+    type Color = Color;
+
+    type Error = Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        todo!()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Window {
+    pub x_start: u16,
+    pub y_start: u16,
+    pub x_end: u16,
+    pub y_end: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Orientation {
+    Horizontal,
+    Vertical,
+}
+
+impl Orientation {
+    pub fn dimensions(self) -> (usize, usize) {
+        match self {
+            Orientation::Horizontal => (HEIGHT, WIDTH),
+            Orientation::Vertical => (WIDTH, HEIGHT),
+        }
     }
 }

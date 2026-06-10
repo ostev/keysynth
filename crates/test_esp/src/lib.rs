@@ -22,6 +22,7 @@ pub mod hid;
 pub mod keyboard;
 pub mod storage;
 pub mod text;
+mod utils;
 
 pub enum KeyboardMode {
     Passthrough,

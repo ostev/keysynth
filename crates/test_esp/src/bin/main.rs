@@ -54,7 +54,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(spawner: Spawner) -> ! {
     println!("Hello");
 
-    let hardware = Hardware::new().unwrap();
+    let hardware = Hardware::new().await.unwrap();
 
     let mut its_a_vec = Vec::new();
     its_a_vec.push(3);
@@ -68,10 +68,10 @@ async fn main(spawner: Spawner) -> ! {
 
     // let cpu_control = CpuControl::new(peripherals.CPU_CTRL);
 
-    esp_rtos::start(
-        hardware.timer_group_0.timer0,
-        hardware.context_switch_interrupt.software_interrupt0,
-    );
+    // esp_rtos::start(
+    //     hardware.timer_group_0.timer0,
+    //     hardware.context_switch_interrupt.software_interrupt0,
+    // );
 
     // spawner.spawn(router().unwrap());
     // // spawner.spawn(hid(hardware.hid).unwrap());

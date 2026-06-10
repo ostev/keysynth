@@ -245,11 +245,11 @@ impl From<editor::Msg> for Msg {
 pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
     let mut gui = Gui::new();
 
-    display.driver.display_on().unwrap();
-    display.driver.set_brightness(0xff).unwrap();
+    // display.driver.display_on().unwrap();
+    // display.driver.set_brightness(0xff).unwrap();
 
-    let Ok(_) = display.driver.clear(Gui::background_color());
-    display.driver.full_flush().unwrap();
+    // let Ok(_) = display.driver.clear(Gui::background_color());
+    // display.driver.full_flush().unwrap();
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
@@ -262,15 +262,15 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
     loop {
         let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver);
 
-        match display.driver.flush() {
-            Ok(_) => {}
-            Err(error) => {
-                println!(
-                    "Warning: error when writing to display. Here's the error: {:?}",
-                    error
-                )
-            }
-        }
+        // match display.driver.flush() {
+        //     Ok(_) => {}
+        //     Err(error) => {
+        //         println!(
+        //             "Warning: error when writing to display. Here's the error: {:?}",
+        //             error
+        //         )
+        //     }
+        // }
 
         let events = input_state.receive_msgs(channel::receiver()).await;
 
