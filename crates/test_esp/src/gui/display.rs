@@ -1,11 +1,16 @@
 use core::convert::Infallible;
 
+use alloc::boxed::Box;
 use embassy_time::Timer;
 use embedded_graphics::{
     Pixel,
     draw_target::DrawTarget,
+    framebuffer::buffer_size,
     geometry::{Dimensions, Point, Size},
-    pixelcolor::{Rgb565, raw::ToBytes},
+    pixelcolor::{
+        Rgb565,
+        raw::{BigEndian, LittleEndian, RawU8, RawU16, ToBytes},
+    },
     primitives::Rectangle,
 };
 use embedded_hal::digital::OutputPin;
@@ -27,53 +32,13 @@ pub struct DisplayHardware {
     pub driver: Driver,
 }
 
-pub struct Driver {
-    spi: SpiDmaBus<'static, Async>,
-    reset_pin: Output<'static>,
-    dc_pin: Output<'static>,
-
-    orientation: Orientation,
+pub struct DriverHardware {
+    pub spi: SpiDmaBus<'static, Async>,
+    pub reset_pin: Output<'static>,
+    pub dc_pin: Output<'static>,
 }
 
-const WIDTH: usize = 240;
-const HEIGHT: usize = 280;
-
-impl Driver {
-    pub async fn init(
-        spi: SpiDmaBus<'static, Async>,
-        reset_pin: Output<'static>,
-        dc_pin: Output<'static>,
-        orientation: Orientation,
-    ) -> Driver {
-        let mut driver = Driver {
-            spi,
-            reset_pin,
-            dc_pin,
-            orientation,
-        };
-
-        driver.reset();
-        println!("Reset!");
-        driver.set_orientation(orientation).await;
-        println!("Orient!");
-        driver.init_registers().await;
-        println!("Register!");
-
-        driver
-    }
-
-    /// Synchronously reset the display
-    pub fn reset(&mut self) {
-        let delay = || esp_hal::rom::ets_delay_us(120_000);
-
-        self.reset_pin.set_high();
-        delay();
-        self.reset_pin.set_low();
-        delay();
-        self.reset_pin.set_high();
-        delay();
-    }
-
+impl DriverHardware {
     async fn write_command(&mut self, command: u8) {
         self.dc_pin.set_low();
         self.spi.write_async(&[command]).await.unwrap();
@@ -87,6 +52,23 @@ impl Driver {
     async fn write_packet(&mut self, command: u8, data: &[u8]) {
         self.write_command(command).await;
         self.write_data(data).await;
+    }
+
+    /// Synchronously reset the display
+    fn reset(&mut self) {
+        let delay = || esp_hal::rom::ets_delay_us(120_000);
+
+        self.reset_pin.set_high();
+        delay();
+        self.reset_pin.set_low();
+        delay();
+        self.reset_pin.set_high();
+        delay();
+    }
+
+    async fn enable_ram_write(&mut self) {
+        // Send the RAMWR command
+        self.write_command(0x2c).await;
     }
 
     async fn init_registers(&mut self) {
@@ -142,17 +124,15 @@ impl Driver {
     }
 
     async fn set_orientation(&mut self, orientation: Orientation) {
-        let memory_access_register = match self.orientation {
+        let memory_access_register = match orientation {
             Orientation::Horizontal => 0x70,
             Orientation::Vertical => 0x00,
         };
 
-        self.orientation = orientation;
-
         self.write_packet(0x36, &[memory_access_register]).await;
     }
 
-    async fn set_window(&mut self, window: Window) {
+    async fn set_window(&mut self, window: Window, orientation: Orientation) {
         // The vertical offset of the display controller
         const ROW_START: u16 = 20;
 
@@ -161,20 +141,20 @@ impl Driver {
             y_start,
             x_end,
             y_end,
-        } = match self.orientation {
+        } = match orientation {
             Orientation::Vertical => Window {
-                x_start: window.y_start,
-                x_end: window.y_end,
+                x_start: window.x_start,
+                x_end: window.x_end,
 
-                y_start: window.x_start + ROW_START,
-                y_end: window.x_end + ROW_START,
+                y_start: window.y_start + ROW_START,
+                y_end: window.y_end + ROW_START,
             },
             Orientation::Horizontal => Window {
-                x_start: window.x_start + ROW_START,
-                x_end: window.x_end + ROW_START,
+                x_start: window.y_start + ROW_START,
+                x_end: window.y_end + ROW_START,
 
-                y_start: window.y_start,
-                y_end: window.y_end,
+                y_start: window.x_start,
+                y_end: window.x_end,
             },
         };
 
@@ -206,18 +186,21 @@ impl Driver {
         )
         .await;
 
-        self.write_command(0x2c).await;
+        self.enable_ram_write().await;
     }
 
-    pub async fn clear_async(&mut self, color: Color) {
-        let (width, height) = self.orientation.dimensions();
+    pub async fn clear_async(&mut self, color: Color, orientation: Orientation) {
+        let (width, height) = orientation.dimensions();
 
-        self.set_window(Window {
-            x_start: 0,
-            y_start: 0,
-            x_end: width as u16,
-            y_end: height as u16,
-        })
+        self.set_window(
+            Window {
+                x_start: 0,
+                y_start: 0,
+                x_end: width as u16,
+                y_end: height as u16,
+            },
+            orientation,
+        )
         .await;
 
         // Allocate the stack space for the clear row for the largest dimension
@@ -228,6 +211,101 @@ impl Driver {
         for _ in 0..height {
             self.write_data(clear_row).await;
         }
+    }
+
+    pub async fn draw_point_async(
+        &mut self,
+        x: u16,
+        y: u16,
+        color: Color,
+        orientation: Orientation,
+    ) {
+        self.set_window(
+            Window {
+                x_start: x,
+                y_start: y,
+                x_end: x,
+                y_end: y,
+            },
+            orientation,
+        )
+        .await;
+        self.write_data(&color.to_be_bytes()).await;
+    }
+}
+
+pub struct Driver {
+    hardware: DriverHardware,
+
+    orientation: Orientation,
+    framebuffer: Box<Framebuffer>,
+    dirty_rect: Rectangle,
+}
+
+type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
+    Rgb565,
+    RawU16,
+    BigEndian,
+    WIDTH,
+    HEIGHT,
+    { buffer_size::<Rgb565>(WIDTH, HEIGHT) },
+>;
+
+const WIDTH: usize = 240; // 240
+const HEIGHT: usize = 280; // 280
+
+impl Driver {
+    pub async fn init(hardware: DriverHardware, orientation: Orientation) -> Driver {
+        let mut driver = Driver {
+            hardware,
+            orientation,
+            framebuffer: Box::new(Framebuffer::new()),
+            dirty_rect: Rectangle::zero(),
+        };
+
+        driver.hardware.reset();
+        println!("Reset!");
+        driver.hardware.init_registers().await;
+        println!("Register!");
+        driver.hardware.set_orientation(orientation).await;
+        println!("Orient!");
+
+        driver
+    }
+
+    pub async fn set_orientation(&mut self, orientation: Orientation) {
+        self.orientation = orientation;
+        self.hardware.set_orientation(orientation).await;
+    }
+
+    pub async fn clear_async(&mut self, color: Color) {
+        self.hardware.clear_async(color, self.orientation).await;
+    }
+
+    async fn set_window(&mut self, window: Window) {
+        self.hardware.set_window(window, self.orientation).await;
+    }
+
+    pub async fn full_flush(&mut self) {
+        let (width, height) = self.orientation.dimensions();
+
+        self.set_window(Window {
+            x_start: 0,
+            y_start: 0,
+            x_end: width as u16,
+            y_end: height as u16,
+        })
+        .await;
+
+        let bytes = self.framebuffer.data()[0..width * 2].as_ref();
+
+        for _ in 0..height {
+            self.hardware.write_data(bytes).await;
+        }
+    }
+
+    pub async fn partial_flush(&mut self) {
+        todo!("Implement dirty rect tracking")
     }
 }
 
@@ -248,7 +326,30 @@ impl DrawTarget for Driver {
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        todo!()
+        self.framebuffer.draw_iter(pixels)
+    }
+
+    fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Self::Color>,
+    {
+        self.framebuffer.fill_contiguous(area, colors)
+    }
+
+    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        self.framebuffer.fill_solid(area, color)
+    }
+
+    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        self.framebuffer.clear(color);
+
+        // for byte in self.framebuffer.data() {
+        //     if *byte != 0xff {
+        //         println!("ack bad byte: {byte}")
+        //     }
+        // }
+
+        Ok(())
     }
 }
 

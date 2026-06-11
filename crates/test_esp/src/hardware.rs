@@ -1,3 +1,5 @@
+use core::mem::MaybeUninit;
+
 use embassy_usb::{
     UsbDevice,
     class::{
@@ -25,6 +27,8 @@ use esp_hal::{
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     otg_fs::{Usb, UsbBus},
     peripherals::{GPIO4, PSRAM, Peripherals, TIMG0},
+    psram::{FlashFreq, Psram, PsramConfig, SpiRamFreq},
+    ram,
     spi::{self, master::Spi},
     system::CpuControl,
     time::Rate,
@@ -54,7 +58,7 @@ pub struct Hardware {
     // pub context_switch_interrupt: SoftwareInterruptControl<'static>,
     pub cpu_control: CpuControl<'static>,
 
-    pub audio: AudioHardware,
+    // pub audio: AudioHardware,
     pub keyboard: KeyboardHardware,
 
     pub display: DisplayHardware,
@@ -76,7 +80,18 @@ pub enum InitError {
 impl Hardware {
     pub async fn new() -> Result<Hardware, InitError> {
         let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
-        esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
+
+        esp_alloc::psram_allocator!(
+            peripherals.PSRAM,
+            esp_hal::psram,
+            esp_hal::psram::PsramConfig {
+                mode: esp_hal::psram::PsramMode::OctalSpi,
+                size: esp_hal::psram::PsramSize::AutoDetect,
+                core_clock: None,
+                flash_frequency: FlashFreq::FlashFreq80m,
+                ram_frequency: SpiRamFreq::Freq80m,
+            }
+        );
 
         let context_switch_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
         let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
@@ -88,31 +103,31 @@ impl Hardware {
 
         let cpu_control = CpuControl::new(peripherals.CPU_CTRL);
 
-        let analog_audio = {
-            let i2s = I2s::new(
-                peripherals.I2S0,
-                peripherals.DMA_CH0,
-                i2s::master::Config::new_tdm_philips()
-                    .with_sample_rate(Rate::from_hz(SAMPLE_RATE))
-                    .with_data_format(i2s::master::DataFormat::Data16Channel16)
-                    .with_channels(Channels::STEREO),
-            )
-            .map_err(InitError::I2SConfigError)?
-            .with_mclk(peripherals.GPIO34);
+        // let analog_audio = {
+        //     let i2s = I2s::new(
+        //         peripherals.I2S0,
+        //         peripherals.DMA_CH0,
+        //         i2s::master::Config::new_tdm_philips()
+        //             .with_sample_rate(Rate::from_hz(SAMPLE_RATE))
+        //             .with_data_format(i2s::master::DataFormat::Data16Channel16)
+        //             .with_channels(Channels::STEREO),
+        //     )
+        //     .map_err(InitError::I2SConfigError)?
+        //     .with_mclk(peripherals.GPIO34);
 
-            let (tx_buffer, tx_descriptors, _, _) = dma_buffers!(4 * 4092, 0);
+        //     let (tx_buffer, tx_descriptors, _, _) = dma_buffers!(4 * 4092, 0);
 
-            let i2s_tx = i2s
-                .i2s_tx
-                .with_bclk(peripherals.GPIO33)
-                .with_dout(peripherals.GPIO47)
-                .with_ws(peripherals.GPIO48)
-                .build(tx_descriptors);
+        //     let i2s_tx = i2s
+        //         .i2s_tx
+        //         .with_bclk(peripherals.GPIO33)
+        //         .with_dout(peripherals.GPIO47)
+        //         .with_ws(peripherals.GPIO48)
+        //         .build(tx_descriptors);
 
-            AnalogAudioHardware { i2s_tx, tx_buffer }
-        };
+        //     AnalogAudioHardware { i2s_tx, tx_buffer }
+        // };
 
-        println!("Audio setup complete!");
+        // println!("Audio setup complete!");
 
         let keyboard = {
             let uart = UartRx::new(
@@ -211,7 +226,7 @@ impl Hardware {
             let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
                 peripherals.SPI2,
                 spi::master::Config::default()
-                    .with_frequency(Rate::from_mhz(20))
+                    .with_frequency(Rate::from_mhz(40))
                     .with_mode(spi::Mode::_0),
             )
             .map_err(InitError::SpiConfigError)?
@@ -244,25 +259,25 @@ impl Hardware {
             //     .map_err(InitError::DisplayInitError)?;
 
             let mut driver = display::Driver::init(
-                spi.into_async(),
-                reset_pin,
-                dc_pin,
+                display::DriverHardware {
+                    spi: spi.into_async(),
+                    reset_pin,
+                    dc_pin,
+                },
                 display::Orientation::Vertical,
             )
             .await;
-            let rng = esp_hal::rng::Rng::new();
-            driver
-                .clear_async(Rgb565::new(
-                    rng.random() as u8,
-                    rng.random() as u8,
-                    rng.random() as u8,
-                ))
-                .await;
+            // driver.clear_async(colors::ERROR).await;
+
+            // driver.clear_async(colors::TEXT).await;
+            driver.clear(colors::ERROR);
+            driver.full_flush().await;
+
             println!("Display setup complete!");
 
             // driver.hard_reset().unwrap();
             // driver.clear(gui::colors::BACKGROUND_LIGHT);
-            // driver.full_flush().unwrap();
+            // driver.full_flush().await;
 
             DisplayHardware { driver }
         };
@@ -284,10 +299,10 @@ impl Hardware {
             // context_switch_interrupt,
             // timer_group_0,
             cpu_control,
-            audio: AudioHardware {
-                analog: analog_audio,
-                usb: usb_audio,
-            },
+            // audio: AudioHardware {
+            //     analog: analog_audio,
+            //     usb: usb_audio,
+            // },
             keyboard,
             hid,
             display,

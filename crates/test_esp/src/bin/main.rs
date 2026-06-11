@@ -11,6 +11,7 @@ extern crate alloc;
 
 use core::mem::MaybeUninit;
 
+use alloc::vec;
 use alloc::vec::Vec;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::peripherals::Peripherals;
@@ -76,6 +77,14 @@ async fn main(spawner: Spawner) -> ! {
     // spawner.spawn(router().unwrap());
     // // spawner.spawn(hid(hardware.hid).unwrap());
     // spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());
+
+    // let my_vec: Vec<u8> = vec![0xff; 100_000];
+
+    // for value in my_vec {
+    //     if value != 0xff {
+    //         panic!("Bad ram!")
+    //     }
+    // }
 
     loop {
         println!("heyyy!!! {}", its_a_vec.last().unwrap_or(&0));
