@@ -270,8 +270,8 @@ impl Hardware {
             // driver.clear_async(colors::ERROR).await;
 
             // driver.clear_async(colors::TEXT).await;
-            driver.clear(colors::ERROR);
-            driver.full_flush().await;
+            // driver.clear(colors::ERROR);
+            // driver.full_flush().await;
 
             println!("Display setup complete!");
 

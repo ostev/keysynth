@@ -36,15 +36,15 @@ pub struct State {
 #[task]
 pub async fn router() {
     let state = State {
-        mode: KeyboardMode::Passthrough,
+        mode: KeyboardMode::Capture,
     };
 
     let keyboard = keyboard::receiver();
     let hid = hid::sender();
+    let gui = gui::sender();
 
     loop {
         let keyboard_status = keyboard.receive().await;
-        println!("status update!!!: {:?}", keyboard_status);
 
         match state.mode {
             KeyboardMode::Passthrough => {
@@ -54,7 +54,10 @@ pub async fn router() {
                 })
                 .await;
             }
-            KeyboardMode::Capture => {}
+            KeyboardMode::Capture => {
+                gui.send(gui::event::InputChange::Keyboard(keyboard_status))
+                    .await
+            }
         }
     }
 }

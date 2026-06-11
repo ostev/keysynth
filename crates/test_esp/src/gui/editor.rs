@@ -8,11 +8,14 @@ pub mod source;
 mod state;
 mod view;
 
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_gui::component::Component;
 use embedded_gui::interactive::FocusState;
 use embedded_gui::layout::Direction;
 use embedded_gui::layout::IntrinsicSize;
 use embedded_gui::layout::Sizing;
+use embedded_gui::primitive::text::Text;
 use embedded_gui::signal::Reactive;
 use embedded_gui::signal::Signal;
 use embedded_gui::signal::SignalRef;
@@ -24,6 +27,7 @@ pub use state::Msg;
 pub use view::EditorView as View;
 
 use crate::gui;
+use crate::gui::colors;
 use crate::gui::display;
 use crate::gui::event::Event;
 
@@ -38,9 +42,10 @@ impl<'a> IntrinsicSize for Editor<'a> {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum FocusKey {
-    Editor,
+impl<'a> Editor<'a> {
+    pub const fn new(state: SignalRef<'a, State>) -> Self {
+        Self { state }
+    }
 }
 
 impl<'a>
@@ -78,7 +83,7 @@ impl<'a>
         v.view(
             Direction::Vertical,
             [
-                v.interactive(FocusKey::Editor, Msg::from_event, |focus_state| {
+                v.interactive(gui::FocusKey::Editor, Msg::from_event, |focus_state| {
                     v.primitive(
                         Sizing::Fill,
                         View {
@@ -90,6 +95,13 @@ impl<'a>
                         },
                     )
                 }),
+                v.primitive(
+                    Sizing::Intrinsic,
+                    Text {
+                        content: SignalRef::constant(&"Hello, world!"),
+                        font_style: Signal::constant(MonoTextStyle::new(&FONT_10X20, colors::TEXT)),
+                    },
+                ),
             ],
         )
     }

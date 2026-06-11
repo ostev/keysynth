@@ -2,8 +2,10 @@ use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
 use embedded_graphics::{
     draw_target::DrawTarget,
+    geometry::Point,
     mono_font::MonoTextStyleBuilder,
     pixelcolor::{Rgb565, RgbColor},
+    primitives::Rectangle,
 };
 use embedded_gui::{
     app::{App, Change, State},
@@ -24,7 +26,7 @@ pub mod colors;
 pub mod display;
 mod editor;
 mod effect;
-mod event;
+pub mod event;
 mod home;
 mod message;
 mod save_dialog;
@@ -50,16 +52,15 @@ pub use channel::sender;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
-    Hello,
-    Editor(editor::FocusKey),
+    Editor,
     Home(home::FocusKey),
 }
 
-impl From<editor::FocusKey> for FocusKey {
-    fn from(key: editor::FocusKey) -> Self {
-        FocusKey::Editor(key)
-    }
-}
+// impl From<editor::FocusKey> for FocusKey {
+//     fn from(key: editor::FocusKey) -> Self {
+//         FocusKey::Editor(key)
+//     }
+// }
 
 impl From<home::FocusKey> for FocusKey {
     fn from(key: home::FocusKey) -> Self {
@@ -72,6 +73,7 @@ impl From<home::FocusKey> for FocusKey {
 enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
     Group(Group),
+    Editor(editor::Editor<'a>),
 }
 
 #[derive(Reactive)]
@@ -83,7 +85,7 @@ enum AnyPrimitive<'a> {
     LineEditor(LineEditor<'a, { NAME_LENGTH }>),
 }
 
-#[derive(Reactive)]
+#[derive(Clone, Copy)]
 enum Page {
     Home,
     Editor,
@@ -101,7 +103,7 @@ impl State for Page {
 
 #[derive(Reactive, State)]
 struct Gui {
-    page: Page,
+    page: Source<Page>,
     editor: Source<editor::State>,
     message: Source<Option<Message>>,
 }
@@ -118,23 +120,24 @@ impl App for Gui {
     type Effect = Effect;
 
     fn new() -> Self {
+        println!("new app!");
         Self {
-            page: Page::Editor,
+            page: Source::new(Page::Editor),
             message: Source::new(None),
             editor: Source::new(editor::State::default()),
         }
     }
 
     fn initial_focus_key() -> Self::FocusKey {
-        FocusKey::Hello
+        FocusKey::Editor
     }
 
     fn background_color() -> Rgb565 {
-        Rgb565::WHITE
+        Rgb565::BLACK
     }
 
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
-        match (&mut self.page, msg) {
+        match (*self.page.signal(), msg) {
             (Page::Editor, Msg::Editor(editor_msg)) => {
                 return self.editor.update(|editor| editor.update(editor_msg));
             }
@@ -194,34 +197,40 @@ impl App for Gui {
         Self::AnyComponent<'a>,
         Self::AnyPrimitive<'a>,
     > {
-        match &self.page {
+        match *self.page.signal() {
             Page::Home => v.view(
                 Direction::Horizontal,
-                [
-                    v.spacer(),
+                [v.centered(
+                    Direction::Horizontal,
                     v.primitive(
-                        Sizing::Fill,
+                        Sizing::Intrinsic,
                         Text {
                             content: SignalRef::constant(&"Hello!!!!"),
                             font_style: Signal::constant(
                                 MonoTextStyleBuilder::new()
-                                    .font(&embedded_graphics::mono_font::ascii::FONT_10X20)
+                                    .font(&embedded_graphics::mono_font::ascii::FONT_9X18)
                                     .text_color(colors::TEXT)
                                     .build(),
                             ),
                         },
                     ),
-                ],
+                )],
             ),
             Page::Editor => {
-                // let editor = v.interactive(
-                //     FocusKey::Editor,
-                //     |event| Msg::Editor(editor::Msg::from_event(event)),
-                //     |_| v.primitive(Sizing::Fill, editor::View::new(self.editor.to_ref())),
-                // );
+                let editor = v.interactive(
+                    FocusKey::Editor,
+                    |event| Msg::Editor(editor::Msg::from_event(event)),
+                    |_| {
+                        v.component(
+                            Sizing::Fill,
+                            editor::Editor::new(self.editor.signal_ref()),
+                            [],
+                        )
+                    },
+                );
 
-                // v.view(Direction::Vertical, [editor])
-                todo!()
+                v.view(Direction::Vertical, [editor])
+                // todo!()
             }
         }
     }
@@ -249,7 +258,10 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
     // display.driver.set_brightness(0xff).unwrap();
 
     // let Ok(_) = display.driver.clear(Gui::background_color());
-    // display.driver.full_flush().unwrap();
+    // display.driver.full_flush().await;
+
+    display.driver.clear(Gui::background_color());
+    display.driver.full_flush().await;
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
@@ -259,10 +271,14 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
         storage: Storage::new(storage),
     };
 
-    loop {
-        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver);
+    println!("Gui!");
 
-        // match display.driver.flush() {
+    let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver, true);
+    display.driver.full_flush().await;
+    println!("Initial flush done!");
+
+    loop {
+        // match display.driver.full_flush().await {
         //     Ok(_) => {}
         //     Err(error) => {
         //         println!(
@@ -276,5 +292,10 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
 
         embedded_gui::app::dispatch(&mut gui, &mut effect_context, &mut internal_state, events)
             .await;
+        let Ok(_) =
+            embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver, false);
+        display.driver.full_flush().await;
+
+        println!("Flush done!");
     }
 }

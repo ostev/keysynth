@@ -7,6 +7,7 @@ use alloc::{
 use embassy_time::{Duration, Instant};
 use embedded_gui::{app::Change, size::Size};
 use embedded_storage_async::nor_flash::NorFlash;
+use esp_println::println;
 use keyboard_protocol::{Key, Modifier, StandardKey};
 
 use crate::{
@@ -169,6 +170,7 @@ impl EditorState {
     }
 
     fn delete(&mut self) {
+        println!("Delete!");
         match self.selection {
             Some(range) => {
                 let text = self.source.get_range(range);

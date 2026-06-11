@@ -46,7 +46,9 @@ a buffer of length {STATUS_SIZE}. Here's the buffer received: {:?}",
                     )
                 }
             }
-            Err(_) => todo!(),
+            Err(error) => {
+                println!("Warning: key receive error! {}", error)
+            }
         }
     }
 }

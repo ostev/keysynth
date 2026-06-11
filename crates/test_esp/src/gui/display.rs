@@ -297,11 +297,9 @@ impl Driver {
         })
         .await;
 
-        let bytes = self.framebuffer.data()[0..width * 2].as_ref();
+        let bytes = self.framebuffer.data();
 
-        for _ in 0..height {
-            self.hardware.write_data(bytes).await;
-        }
+        self.hardware.write_data(bytes).await;
     }
 
     pub async fn partial_flush(&mut self) {

@@ -1,5 +1,6 @@
 use core::ops::Index;
 
+use alloc::vec;
 use alloc::vec::Vec;
 use embedded_storage_async::nor_flash::NorFlash;
 use sequential_storage::{cache::KeyCacheImpl, map::MapStorage};
@@ -27,7 +28,7 @@ impl Default for Source {
     fn default() -> Self {
         Self {
             name: None,
-            lines: Vec::new(),
+            lines: vec![ByteString::new()],
         }
     }
 }

@@ -39,7 +39,7 @@ const FONT: MonoFont = FONT_10X20;
 const GUTTER_MAX_CHARACTERS: u32 = 3;
 const GUTTER_WIDTH: u32 = text::width_with_space_after(&FONT, GUTTER_MAX_CHARACTERS);
 const MAX_LINE_LENGTH: u32 =
-    text::characters_in(&FONT, display::SIZE.width as u32) - GUTTER_MAX_CHARACTERS;
+    text::characters_in(&FONT, display::SIZE.width as u32) - GUTTER_MAX_CHARACTERS - 4;
 
 impl<'a> Primitive<display::Driver> for EditorView<'a> {
     fn draw(
@@ -114,7 +114,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
                     draw_cursor(
                         &FONT,
                         embedded_graphics::geometry::Point::new(
-                            (GUTTER_WIDTH + text::width(&FONT, self.state.cursor.column as u32))
+                            (GUTTER_WIDTH + text::width(&FONT, self.state.cursor.column as u32 + 1))
                                 as i32,
                             y_offset,
                         ),

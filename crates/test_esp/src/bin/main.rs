@@ -25,6 +25,7 @@ use esp_backtrace as _;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp_println::println;
+use test_esp::gui;
 use test_esp::hardware::Hardware;
 use test_esp::hid::hid;
 use test_esp::keyboard::keyboard_interface;
@@ -52,15 +53,11 @@ esp_bootloader_esp_idf::esp_app_desc!();
     reason = "it's not unusual to allocate larger buffers etc. in main"
 )]
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
-    println!("Hello");
-
+async fn main(spawner: Spawner) {
     let hardware = Hardware::new().await.unwrap();
 
     let mut its_a_vec = Vec::new();
     its_a_vec.push(3);
-
-    println!("Helloooo");
 
     // let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
@@ -74,9 +71,10 @@ async fn main(spawner: Spawner) -> ! {
     //     hardware.context_switch_interrupt.software_interrupt0,
     // );
 
-    // spawner.spawn(router().unwrap());
+    spawner.spawn(router().unwrap());
     // // spawner.spawn(hid(hardware.hid).unwrap());
-    // spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());
+    spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());
+    spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
 
     // let my_vec: Vec<u8> = vec![0xff; 100_000];
 
@@ -86,16 +84,16 @@ async fn main(spawner: Spawner) -> ! {
     //     }
     // }
 
-    loop {
-        println!("heyyy!!! {}", its_a_vec.last().unwrap_or(&0));
-        // its_a_vec.push(its_a_vec.last().unwrap_or(&0) + 1);
-        // hardware.debug_uart.write("Hello!!!".as_bytes()).unwrap();
-        // let mut buf: [u8; 1] = [0; 1];
-        // hardware.debug_uart.read(&mut buf).unwrap();
-        // println!(
-        //     "heyyy!!! here's some data: {}",
-        //     str::from_utf8(&buf).unwrap()
-        // );
-        // Timer::after(Duration::from_secs(2)).await;
-    }
+    // loop {
+    // println!("heyyy!!! {}", its_a_vec.last().unwrap_or(&0));
+    // its_a_vec.push(its_a_vec.last().unwrap_or(&0) + 1);
+    // hardware.debug_uart.write("Hello!!!".as_bytes()).unwrap();
+    // let mut buf: [u8; 1] = [0; 1];
+    // hardware.debug_uart.read(&mut buf).unwrap();
+    // println!(
+    //     "heyyy!!! here's some data: {}",
+    //     str::from_utf8(&buf).unwrap()
+    // );
+    // Timer::after(Duration::from_secs(2)).await;
+    // }
 }
