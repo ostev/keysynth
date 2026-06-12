@@ -1,8 +1,0 @@
-[package]
-name = "gui"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-embedded_gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.1.0" }
-synth = { version = "0.1.0", path = "../synth" }
