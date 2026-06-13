@@ -111,12 +111,6 @@ impl SelectFile {
     }
 }
 
-impl IntrinsicSize for SelectFile {
-    fn intrinsic_size(&self) -> embedded_gui::size::Size {
-        unimplemented!()
-    }
-}
-
 impl SelectFile {
     pub fn view<'a>(
         &'a self,
