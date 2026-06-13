@@ -23,7 +23,7 @@ use crate::{
         event::{Event, KeyEvent},
         message::Message,
     },
-    text::{ByteChar, ByteString},
+    text::{ByteChar, ByteString, Name, fixed_str},
 };
 
 pub struct EditorState {
@@ -40,7 +40,7 @@ pub struct EditorState {
 
 impl Default for EditorState {
     fn default() -> Self {
-        Self::new(Source::default())
+        Self::new(Source::new(fixed_str(&"unnamed")))
     }
 }
 
@@ -129,20 +129,18 @@ impl EditorState {
                     self.source.apply(edit);
                 }
             }
-            Msg::Save => match self.source.name {
-                Some(name) => match self.source.serialize() {
-                    Ok(serialized) => {
-                        return Change::none().with_effect(Effect::Save(name, serialized));
-                    }
-                    Err(_) => {
-                        let text = Cow::Borrowed(
-                            "A serialization error occurred while saving! Please try again.",
-                        );
+            Msg::Save => match self.source.serialize() {
+                Ok(serialized) => {
+                    return Change::none()
+                        .with_effect(Effect::Save(self.source.name.clone(), serialized));
+                }
+                Err(_) => {
+                    let text = Cow::Borrowed(
+                        "A serialization error occurred while saving! Please try again.",
+                    );
 
-                        self.message = Some(Message::now(text))
-                    }
-                },
-                None => todo!(),
+                    self.message = Some(Message::now(text))
+                }
             },
 
             Msg::NoOp => {}

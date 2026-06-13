@@ -21,7 +21,7 @@ use crate::{
         editor::{cursor::draw_cursor, gap_buffer::GapBuffer},
         event::{Event, KeyEvent},
     },
-    text::{self, ByteChar},
+    text::{self, ByteChar, FixedByteString},
 };
 
 const FONT: MonoFont = FONT_10X20;
@@ -65,6 +65,10 @@ impl<const N: usize> State<N> {
 
             Msg::NoOp => {}
         };
+    }
+
+    pub fn as_fixed_byte_string(&self) -> FixedByteString<N> {
+        self.buffer.to_vec()
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,7 +117,7 @@ impl<'a, const N: usize> Primitive<display::Driver> for LineEditor<'a, N> {
             embedded_graphics::geometry::Point::new(PADDING, PADDING),
             embedded_graphics::text::Baseline::Top,
             target,
-        );
+        )?;
 
         draw_cursor(
             &FONT,

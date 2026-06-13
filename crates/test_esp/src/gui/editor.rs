@@ -11,6 +11,7 @@ mod view;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_gui::component::Component;
+use embedded_gui::component::group::Group;
 use embedded_gui::interactive::FocusState;
 use embedded_gui::layout::Direction;
 use embedded_gui::layout::IntrinsicSize;
@@ -30,6 +31,11 @@ use crate::gui;
 use crate::gui::colors;
 use crate::gui::display;
 use crate::gui::event::Event;
+use crate::gui::text_bar::TextBar;
+use crate::text;
+use crate::text::FixedByteString;
+use crate::text::fixed_str;
+use crate::text::fixed_str_to_str;
 
 #[derive(Reactive)]
 pub struct Editor<'a> {
@@ -80,9 +86,18 @@ impl<'a>
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
     > {
+        const BAR_HEIGHT: u16 = 40;
+
         v.view(
             Direction::Vertical,
             [
+                v.component(
+                    Sizing::Constrained(BAR_HEIGHT),
+                    TextBar {
+                        text: self.state.map(|state| state.source.name.clone()),
+                    },
+                    [],
+                ),
                 v.interactive(gui::FocusKey::Editor, Msg::from_event, |focus_state| {
                     v.primitive(
                         Sizing::Fill,
@@ -95,12 +110,10 @@ impl<'a>
                         },
                     )
                 }),
-                v.primitive(
-                    Sizing::Intrinsic,
-                    Text {
-                        content: SignalRef::constant(&"Hello, world!"),
-                        font_style: Signal::constant(MonoTextStyle::new(&FONT_10X20, colors::TEXT)),
-                    },
+                v.background(
+                    Sizing::Constrained(BAR_HEIGHT),
+                    Signal::constant(colors::PURPLE),
+                    [],
                 ),
             ],
         )

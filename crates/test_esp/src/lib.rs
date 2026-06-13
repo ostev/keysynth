@@ -9,10 +9,8 @@
 extern crate alloc;
 
 use embassy_executor::task;
-use embassy_sync::channel::Channel;
-use esp_println::println;
 
-use crate::{hardware::Hardware, hid::UsbKeyboardStatus};
+use crate::hid::UsbKeyboardStatus;
 
 pub mod audio;
 pub mod concurrency;

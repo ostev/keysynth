@@ -1,3 +1,5 @@
+use core::ops::Deref;
+
 use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
 use embedded_graphics::{
@@ -9,10 +11,10 @@ use embedded_graphics::{
 };
 use embedded_gui::{
     app::{App, Change, State},
-    component::{any_component, button::Button, group::Group},
+    component::{any_component, background::Background, button::Button, group::Group},
     interactive::FocusState,
     layout::{Direction, Sizing},
-    primitive::{any_primitive, text::Text},
+    primitive::{any_primitive, owned_text::OwnedText, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
 };
 use esp_println::println;
@@ -23,23 +25,29 @@ use st7789v2::{DriverResult, St7789v2};
 
 mod background;
 pub mod colors;
+mod dial;
 pub mod display;
 mod editor;
 mod effect;
 pub mod event;
-mod home;
+mod file_list;
+mod labelled;
 mod message;
 mod save_dialog;
+mod select_file;
+mod text_bar;
 
 use crate::{
     gui::{
         display::DisplayHardware,
         editor::line::{self, LineEditor},
         effect::Effect,
+        file_list::{FileEntry, FileList, ScrollDirection},
         message::Message,
+        text_bar::TextBar,
     },
-    storage::{self, NAME_LENGTH, Name, Storage, StorageHardware},
-    text::ByteString,
+    storage::{LoadError, Storage, StorageHardware},
+    text::{NAME_SIZE, Name},
 };
 
 mod channel {
@@ -53,7 +61,7 @@ pub use channel::sender;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Editor,
-    Home(home::FocusKey),
+    SelectFile(select_file::FocusKey),
 }
 
 // impl From<editor::FocusKey> for FocusKey {
@@ -62,9 +70,9 @@ enum FocusKey {
 //     }
 // }
 
-impl From<home::FocusKey> for FocusKey {
-    fn from(key: home::FocusKey) -> Self {
-        FocusKey::Home(key)
+impl From<select_file::FocusKey> for FocusKey {
+    fn from(key: select_file::FocusKey) -> Self {
+        FocusKey::SelectFile(key)
     }
 }
 
@@ -74,6 +82,10 @@ enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
     Group(Group),
     Editor(editor::Editor<'a>),
+    TextBar(TextBar),
+    Background(Background<display::Color>),
+    FileEntry(FileEntry),
+    FileList(FileList<'a>),
 }
 
 #[derive(Reactive)]
@@ -82,12 +94,12 @@ enum AnyPrimitive<'a> {
     EditorView(editor::View<'a>),
     Spacer(embedded_gui::primitive::spacer::Spacer),
     TextStr(Text<'a, display::Color, &'a str>),
-    LineEditor(LineEditor<'a, { NAME_LENGTH }>),
+    OwnedText(OwnedText<display::Color, { NAME_SIZE }>),
+    LineEditor(LineEditor<'a, { NAME_SIZE }>),
 }
 
-#[derive(Clone, Copy)]
 enum Page {
-    Home,
+    SelectFile(Source<select_file::SelectFile>),
     Editor,
 }
 
@@ -95,7 +107,7 @@ enum Page {
 impl State for Page {
     fn mark_resolved(&mut self) {
         match self {
-            Page::Home => {}
+            Page::SelectFile(state) => state.mark_resolved(),
             Page::Editor => {}
         }
     }
@@ -104,7 +116,9 @@ impl State for Page {
 #[derive(Reactive, State)]
 struct Gui {
     page: Source<Page>,
+
     editor: Source<editor::State>,
+
     message: Source<Option<Message>>,
 }
 
@@ -124,6 +138,7 @@ impl App for Gui {
         Self {
             page: Source::new(Page::Editor),
             message: Source::new(None),
+
             editor: Source::new(editor::State::default()),
         }
     }
@@ -137,14 +152,21 @@ impl App for Gui {
     }
 
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
-        match (*self.page.signal(), msg) {
+        match (&mut *self.page, msg) {
             (Page::Editor, Msg::Editor(editor_msg)) => {
                 return self.editor.update(|editor| editor.update(editor_msg));
             }
+            (Page::SelectFile(state), Msg::SelectFile(home_msg)) => {
+                return state.update(|home| home.update(home_msg));
+            }
+
             (_, Msg::LoadCompleted(result)) => match result {
-                Ok(source) => self
-                    .editor
-                    .update(|editor| *editor = editor::State::new(source)),
+                Ok(source) => {
+                    self.editor
+                        .update(|editor| *editor = editor::State::new(source));
+
+                    self.page.set(Page::Editor);
+                }
                 Err(error) => {
                     let text = Cow::Owned(format!(
                         "An error occurred while loading from flash! Please try again. The error is: {:?}",
@@ -179,6 +201,9 @@ impl App for Gui {
                     self.message.set(Some(Message::now(text)));
                 }
             },
+            (_, Msg::ChangeFocus(focus)) => {
+                return Change::none().with_focus_key(focus);
+            }
             _ => {}
         }
 
@@ -197,25 +222,8 @@ impl App for Gui {
         Self::AnyComponent<'a>,
         Self::AnyPrimitive<'a>,
     > {
-        match *self.page.signal() {
-            Page::Home => v.view(
-                Direction::Horizontal,
-                [v.centered(
-                    Direction::Horizontal,
-                    v.primitive(
-                        Sizing::Intrinsic,
-                        Text {
-                            content: SignalRef::constant(&"Hello!!!!"),
-                            font_style: Signal::constant(
-                                MonoTextStyleBuilder::new()
-                                    .font(&embedded_graphics::mono_font::ascii::FONT_9X18)
-                                    .text_color(colors::TEXT)
-                                    .build(),
-                            ),
-                        },
-                    ),
-                )],
-            ),
+        match &*self.page {
+            Page::SelectFile(state) => state.view(v),
             Page::Editor => {
                 let editor = v.interactive(
                     FocusKey::Editor,
@@ -230,7 +238,6 @@ impl App for Gui {
                 );
 
                 v.view(Direction::Vertical, [editor])
-                // todo!()
             }
         }
     }
@@ -238,15 +245,25 @@ impl App for Gui {
 
 pub enum Msg {
     Editor(editor::Msg),
-    SaveCompleted(Result<Name, sequential_storage::Error<FlashStorageError>>),
-    LoadCompleted(Result<editor::source::Source, effect::LoadError>),
-    LineEditor(line::Msg),
-    CloseSaveDialog,
+
+    SaveCompleted(Result<Name, LoadError>),
+    LoadCompleted(Result<editor::source::Source, LoadError>),
+
+    SelectFile(select_file::Msg),
+
+    ChangeFocus(FocusKey),
+
+    NoOp,
 }
 
 impl From<editor::Msg> for Msg {
     fn from(editor_msg: editor::Msg) -> Msg {
         Msg::Editor(editor_msg)
+    }
+}
+impl From<select_file::Msg> for Msg {
+    fn from(editor_msg: select_file::Msg) -> Msg {
+        Msg::SelectFile(editor_msg)
     }
 }
 

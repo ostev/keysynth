@@ -11,29 +11,35 @@ use crate::{
         history::Edit,
         position::{Position, SelectionRange},
     },
-    storage::Name,
-    text::{ByteChar, ByteStr, ByteString},
+    text::{ByteChar, ByteStr, ByteString, Name},
 };
 
 /// Each program can be a maximum of 2KB
 pub const MAX_SIZE: usize = 2 * 1024;
 
 pub struct Source {
-    pub name: Option<Name>,
+    pub name: Name,
     // TODO: replace with a gap buffer for better insert performance
     pub lines: Vec<ByteString>,
 }
 
-impl Default for Source {
-    fn default() -> Self {
+// impl Default for Source {
+//     fn default() -> Self {
+//         Self {
+//             name: None,
+//             lines: vec![ByteString::new()],
+//         }
+//     }
+// }
+
+impl Source {
+    pub fn new(name: Name) -> Self {
         Self {
-            name: None,
+            name,
             lines: vec![ByteString::new()],
         }
     }
-}
 
-impl Source {
     pub fn insert(&mut self, character: ByteChar, position: Position) -> Position {
         match character {
             b'\n' => {
@@ -135,7 +141,7 @@ impl Source {
 
     fn from_serialized(name: Name, serialized: SerializedSource) -> Source {
         Source {
-            name: Some(name),
+            name,
             lines: serialized
                 .text
                 .split(|&character| character == b'\n')
