@@ -1,5 +1,7 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
-use keyboard_protocol::{Key, KeyboardStatus};
+use keyboard_protocol::{Key, KeyboardStatus, StandardKey};
+
+use crate::gui;
 
 pub enum KeyEvent {
     Pressed(Key),
@@ -49,5 +51,45 @@ impl InputState {
                     .map(move |event| Event::Key { event, keyboard })
             }
         }
+    }
+}
+
+pub fn handler<Msg: Into<gui::Msg>>(
+    event: Event,
+    down: Msg,
+    up: Msg,
+    enter: Msg,
+    none: Msg,
+) -> Msg {
+    match event {
+        Event::Key { event, .. } => match event {
+            KeyEvent::Pressed(Key::Standard(key)) => match key {
+                StandardKey::Down => down,
+                StandardKey::Up => up,
+                StandardKey::Enter => enter,
+                _ => none,
+            },
+            _ => none,
+        },
+    }
+}
+
+pub fn handler_lazy<Msg: Into<gui::Msg>>(
+    event: Event,
+    down: impl FnOnce() -> Msg,
+    up: impl FnOnce() -> Msg,
+    enter: impl FnOnce() -> Msg,
+    none: impl FnOnce() -> Msg,
+) -> Msg {
+    match event {
+        Event::Key { event, .. } => match event {
+            KeyEvent::Pressed(Key::Standard(key)) => match key {
+                StandardKey::Down => down(),
+                StandardKey::Up => up(),
+                StandardKey::Enter => enter(),
+                _ => none(),
+            },
+            _ => none(),
+        },
     }
 }
