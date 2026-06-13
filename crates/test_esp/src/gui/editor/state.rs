@@ -131,7 +131,7 @@ impl EditorState {
             }
             Msg::Save => match self.source.serialize() {
                 Ok(serialized) => {
-                    return Change::none()
+                    return Change::new()
                         .with_effect(Effect::Save(self.source.name.clone(), serialized));
                 }
                 Err(_) => {
@@ -146,7 +146,7 @@ impl EditorState {
             Msg::NoOp => {}
         };
 
-        Change::none()
+        Change::new()
     }
 
     fn clear_message_if_old(&mut self) {
@@ -316,14 +316,14 @@ pub enum Msg {
 }
 
 impl Msg {
-    pub fn from_event(event: Event) -> Msg {
+    pub fn from_event(event: Event) -> Option<Msg> {
         let Event::Key { event, keyboard } = event;
         let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
             | keyboard.modifier_bitfield.contains(Modifier::RightShift);
         let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
             | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
 
-        match event {
+        let msg = match event {
             KeyEvent::Pressed(key) => match key {
                 Key::Standard(standard) => {
                     match standard {
@@ -401,15 +401,17 @@ impl Msg {
                             if let Some(character) = to_char(standard) {
                                 Msg::Insert(character)
                             } else {
-                                Msg::NoOp
+                                return None;
                             }
                         }
                     }
                 }
-                Key::Modifier(_) => Msg::NoOp,
-                Key::Special(_) => Msg::NoOp,
+                Key::Modifier(_) => return None,
+                Key::Special(_) => return None,
             },
-            KeyEvent::Released(_) => Msg::NoOp,
-        }
+            KeyEvent::Released(_) => return None,
+        };
+
+        Some(msg)
     }
 }

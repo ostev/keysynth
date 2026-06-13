@@ -5,7 +5,7 @@ use embedded_gui::{
     layout::{Direction, IntrinsicSize, Sizing},
     primitive::text::Text,
     signal::{Reactive, Signal, SignalRef, Source},
-    view::{View, Widget},
+    view::View,
 };
 
 use crate::{
@@ -24,10 +24,11 @@ use crate::{
     text::{NAME_SIZE, Name, fixed_str},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum FocusKey {
+    #[default]
     NewFile,
+
     FileList(usize),
 }
 
@@ -36,6 +37,7 @@ pub enum Msg {
 
     ScrollFileList(ScrollDirection),
     SelectFile(usize),
+    DeleteFile(usize),
 
     FilesReceived(Result<storage::Files, LoadError>),
 
@@ -69,7 +71,7 @@ impl SelectFile {
 
             Msg::ScrollFileList(scroll_direction) => {
                 if *self.scroll == 0 {
-                    return Change::none().with_focus_key(FocusKey::NewFile);
+                    return Change::new().with_focus_key(FocusKey::NewFile);
                 } else {
                     self.scroll.update(|scroll| match scroll_direction {
                         ScrollDirection::Down => (*scroll + 1).min(MAX_FILES),
@@ -80,7 +82,12 @@ impl SelectFile {
 
             Msg::SelectFile(index) => {
                 if let Some(name) = self.files.get(index) {
-                    return Change::none().with_effect(Effect::Load(name.clone()));
+                    return Change::new().with_effect(Effect::Load(name.clone()));
+                }
+            }
+            Msg::DeleteFile(index) => {
+                if let Some(name) = self.files.get(index) {
+                    return Change::new().with_effect(Effect::Delete(name.clone()));
                 }
             }
 
@@ -100,7 +107,7 @@ impl SelectFile {
             Msg::NoOp => {}
         }
 
-        Change::none()
+        Change::new()
     }
 }
 
@@ -144,7 +151,6 @@ impl SelectFile {
                             gui::Msg::LoadCompleted(Ok(editor::source::Source::new(
                                 file_name.clone(),
                             ))),
-                            Msg::NoOp.into(),
                         )
                     },
                     |_| {
@@ -185,7 +191,9 @@ impl SelectFile {
                 v.component(
                     Sizing::Constrained(BAR_HEIGHT),
                     TextBar {
-                        text: Signal::constant(fixed_str(&"[enter] to select")),
+                        text: Signal::constant(fixed_str(
+                            &"[enter] to select, [super + backspace] to delete",
+                        )),
                     },
                     [],
                 ),

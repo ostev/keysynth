@@ -130,6 +130,13 @@ impl Storage {
             .map_err(LoadError::Flash)
     }
 
+    pub async fn delete(&mut self, key: &Key) -> Result<(), LoadError> {
+        self.files
+            .remove_item(&mut self.data_buffer, key)
+            .await
+            .map_err(LoadError::Flash)
+    }
+
     pub async fn fetch_files(&mut self) -> Result<Files, LoadError> {
         self.load(&FILE_LIST_KEY)
             .await

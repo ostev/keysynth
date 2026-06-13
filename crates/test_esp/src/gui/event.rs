@@ -1,5 +1,5 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
-use keyboard_protocol::{Key, KeyboardStatus, StandardKey};
+use keyboard_protocol::{Key, KeyboardStatus, Modifier, StandardKey};
 
 use crate::gui;
 
@@ -54,22 +54,16 @@ impl InputState {
     }
 }
 
-pub fn handler<Msg: Into<gui::Msg>>(
-    event: Event,
-    down: Msg,
-    up: Msg,
-    enter: Msg,
-    none: Msg,
-) -> Msg {
+pub fn handler<Msg: Into<gui::Msg>>(event: Event, down: Msg, up: Msg, enter: Msg) -> Option<Msg> {
     match event {
         Event::Key { event, .. } => match event {
             KeyEvent::Pressed(Key::Standard(key)) => match key {
-                StandardKey::Down => down,
-                StandardKey::Up => up,
-                StandardKey::Enter => enter,
-                _ => none,
+                StandardKey::Down => Some(down),
+                StandardKey::Up => Some(up),
+                StandardKey::Enter => Some(enter),
+                _ => None,
             },
-            _ => none,
+            _ => None,
         },
     }
 }
@@ -90,6 +84,26 @@ pub fn handler_lazy<Msg: Into<gui::Msg>>(
                 _ => none(),
             },
             _ => none(),
+        },
+    }
+}
+
+pub fn on_keydown<Msg: Into<gui::Msg>>(
+    unmodified: impl Fn(Key) -> Option<Msg>,
+    with_super: impl Fn(Key) -> Option<Msg>,
+) -> impl Fn(Event) -> Option<gui::Msg> {
+    move |event| match event {
+        Event::Key { event, keyboard } => match event {
+            KeyEvent::Pressed(key) => {
+                if keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
+                    || keyboard.modifier_bitfield.contains(Modifier::RightSuper)
+                {
+                    unmodified(key).map(|msg| msg.into())
+                } else {
+                    with_super(key).map(|msg| msg.into())
+                }
+            }
+            KeyEvent::Released(_) => None,
         },
     }
 }

@@ -121,6 +121,21 @@ struct Gui {
     message: Source<Option<Message>>,
 }
 
+impl Gui {
+    fn set_page(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
+        let change = match &page {
+            Page::SelectFile(_) => Change::new()
+                .with_effect(Effect::FetchFiles)
+                .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
+            Page::Editor => Change::new().with_focus_key(FocusKey::Editor),
+        };
+
+        self.page.set(page);
+
+        change
+    }
+}
+
 impl App for Gui {
     type Target = display::Driver;
 
@@ -164,7 +179,7 @@ impl App for Gui {
                     self.editor
                         .update(|editor| *editor = editor::State::new(source));
 
-                    self.page.set(Page::Editor);
+                    return self.set_page(Page::Editor);
                 }
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -200,13 +215,34 @@ impl App for Gui {
                     self.message.set(Some(Message::now(text)));
                 }
             },
+            (_, Msg::DeleteCompleted(result)) => match result {
+                Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
+                Err(error) => {
+                    let text = Cow::Owned(format!(
+                        "An error occurred while deleting! Please try again. The error is: {:?}",
+                        error
+                    ));
+                    self.message.set(Some(Message::now(text)));
+                }
+            },
+            (_, Msg::RenameCompleted(result)) => match result {
+                Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
+                Err(error) => {
+                    let text = Cow::Owned(format!(
+                        "An error occurred while renaming! Please try again. The error is: {:?}",
+                        error
+                    ));
+                    self.message.set(Some(Message::now(text)));
+                }
+            },
+
             (_, Msg::ChangeFocus(focus)) => {
-                return Change::none().with_focus_key(focus);
+                return Change::new().with_focus_key(focus);
             }
             _ => {}
         }
 
-        Change::none()
+        Change::new()
     }
 
     fn view<'a>(
@@ -226,7 +262,7 @@ impl App for Gui {
             Page::Editor => {
                 let editor = v.interactive(
                     FocusKey::Editor,
-                    |event| Msg::Editor(editor::Msg::from_event(event)),
+                    |event| editor::Msg::from_event(event).map(Msg::Editor),
                     |_| {
                         v.component(
                             Sizing::Fill,
@@ -242,17 +278,17 @@ impl App for Gui {
     }
 }
 
-pub enum Msg {
+enum Msg {
     Editor(editor::Msg),
 
     SaveCompleted(Result<Name, LoadError>),
+    DeleteCompleted(Result<(), LoadError>),
+    RenameCompleted(Result<(), LoadError>),
     LoadCompleted(Result<editor::source::Source, LoadError>),
 
     SelectFile(select_file::Msg),
 
     ChangeFocus(FocusKey),
-
-    NoOp,
 }
 
 impl From<editor::Msg> for Msg {

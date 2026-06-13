@@ -166,15 +166,35 @@ impl<'a>
             Direction::Horizontal,
             [v.interactive(
                 select_file::FocusKey::FileList(*self.index),
-                move |event| {
-                    event::handler(
-                        event,
-                        select_file::Msg::ScrollFileList(ScrollDirection::Down),
-                        select_file::Msg::ScrollFileList(ScrollDirection::Up),
-                        select_file::Msg::SelectFile(index),
-                        select_file::Msg::NoOp,
-                    )
-                },
+                // move |event| {
+                //     event::handler(
+                //         event,
+                //         select_file::Msg::ScrollFileList(ScrollDirection::Down),
+                //         select_file::Msg::ScrollFileList(ScrollDirection::Up),
+                //         select_file::Msg::SelectFile(index),
+                //         select_file::Msg::NoOp,
+                //     )
+                // },
+                event::on_keydown(
+                    move |key| match key {
+                        Key::Standard(StandardKey::Down) => {
+                            Some(select_file::Msg::ScrollFileList(ScrollDirection::Down))
+                        }
+                        Key::Standard(StandardKey::Up) => {
+                            Some(select_file::Msg::ScrollFileList(ScrollDirection::Up))
+                        }
+                        Key::Standard(StandardKey::Enter) => {
+                            Some(select_file::Msg::SelectFile(index))
+                        }
+                        _ => None,
+                    },
+                    move |key| match key {
+                        Key::Standard(StandardKey::Backspace) => {
+                            Some(select_file::Msg::DeleteFile(index))
+                        }
+                        _ => None,
+                    },
+                ),
                 move |focus_state| {
                     let font_style = {
                         let builder = MonoTextStyleBuilder::new()
