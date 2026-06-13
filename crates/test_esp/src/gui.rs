@@ -33,7 +33,6 @@ pub mod event;
 mod file_list;
 mod labelled;
 mod message;
-mod save_dialog;
 mod select_file;
 mod text_bar;
 
