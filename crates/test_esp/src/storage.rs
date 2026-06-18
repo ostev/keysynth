@@ -36,17 +36,34 @@ pub type Key = [ByteChar; NAME_SIZE + 1];
 
 pub const FILE_LIST_KEY: Key = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-pub const MAX_FILES: usize = 40;
+pub const MAX_FILES: usize = 32;
 
 pub struct Files {
-    pub files: FnvIndexSet<Name, MAX_FILES>,
+    files: heapless::Vec<Name, MAX_FILES>,
 }
 
 impl Files {
     pub fn new() -> Files {
         Files {
-            files: FnvIndexSet::new(),
+            files: heapless::Vec::new(),
         }
+    }
+
+    pub fn create(&mut self, name: Name) -> Result<(), LoadError> {
+        if !self.files.contains(&name) {
+            self.files.push(name).map_err(|_| LoadError::TooManyFiles)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn remove(&mut self, name: &Name) {
+        self.files.retain(|file_name| file_name == name);
+    }
+
+    pub fn sorted_by_most_recent(mut self) -> heapless::Vec<Name, MAX_FILES> {
+        self.files.reverse();
+        self.files
     }
 
     pub fn serialize(&self) -> Result<[u8; MAX_SIZE], postcard::Error> {

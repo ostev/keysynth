@@ -1,4 +1,7 @@
-use core::ops::Deref;
+use core::{
+    ops::Deref,
+    sync::atomic::{self, AtomicBool},
+};
 
 use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
@@ -17,57 +20,70 @@ use embedded_gui::{
     primitive::{any_primitive, owned_text::OwnedText, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
 };
-use esp_println::println;
 use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
-use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus};
+use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus, Modifier};
 use st7789v2::{DriverResult, St7789v2};
 
 mod background;
 pub mod colors;
-mod dial;
 pub mod display;
 mod editor;
 mod effect;
 pub mod event;
-mod file_list;
-mod labelled;
+mod home;
 mod message;
 mod select_file;
 mod text_bar;
 
 use crate::{
+    concurrency::receive_all,
     gui::{
         display::DisplayHardware,
         editor::line::{self, LineEditor},
         effect::Effect,
-        file_list::{FileEntry, FileList, ScrollDirection},
+        home::dial::{self, Dial},
         message::Message,
+        select_file::file_list::{FileEntry, FileList},
         text_bar::TextBar,
     },
+    input::{self, event::Event},
     storage::{LoadError, Storage, StorageHardware},
     text::{NAME_SIZE, Name},
 };
 
 mod channel {
-    use crate::{channel, gui::event};
+    use crate::{channel, gui::event, input};
 
-    channel!(event::InputChange);
+    channel!(input::event::Event);
 }
 
 pub use channel::sender;
+
+static IS_CAPTURING_ALL_KEYBOARD_INPUT: AtomicBool = AtomicBool::new(false);
+
+fn is_capturing_all_keyboard_input() -> bool {
+    IS_CAPTURING_ALL_KEYBOARD_INPUT.load(atomic::Ordering::Relaxed)
+}
+
+pub fn is_capturing(event: &Event) -> bool {
+    match event {
+        Event::Key { keyboard, .. } => is_capturing_all_keyboard_input() || keyboard.is_super(),
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Editor,
     SelectFile(select_file::FocusKey),
+    Home(home::FocusKey),
 }
 
-// impl From<editor::FocusKey> for FocusKey {
-//     fn from(key: editor::FocusKey) -> Self {
-//         FocusKey::Editor(key)
-//     }
-// }
+impl From<home::FocusKey> for FocusKey {
+    fn from(key: home::FocusKey) -> Self {
+        FocusKey::Home(key)
+    }
+}
 
 impl From<select_file::FocusKey> for FocusKey {
     fn from(key: select_file::FocusKey) -> Self {
@@ -76,7 +92,7 @@ impl From<select_file::FocusKey> for FocusKey {
 }
 
 #[derive(Reactive)]
-#[any_component(target = display::Driver, event = event::Event, msg = Msg, focus_key = FocusKey)]
+#[any_component(target = display::Driver, event = input::event::Event, msg = Msg, focus_key = FocusKey)]
 enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
     Group(Group),
@@ -85,6 +101,7 @@ enum AnyComponent<'a> {
     Background(Background<display::Color>),
     FileEntry(FileEntry),
     FileList(FileList<'a>),
+    DialControl(dial::Control<'a>),
 }
 
 #[derive(Reactive)]
@@ -95,6 +112,7 @@ enum AnyPrimitive<'a> {
     TextStr(Text<'a, display::Color, &'a str>),
     OwnedText(OwnedText<display::Color, { NAME_SIZE }>),
     LineEditor(LineEditor<'a, { NAME_SIZE }>),
+    Dial(Dial),
 }
 
 enum Page {
@@ -123,14 +141,19 @@ struct Gui {
 
 impl Gui {
     fn set_page(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
-        let change = match &page {
-            Page::SelectFile(_) => Change::new()
-                .with_effect(Effect::FetchFiles)
-                .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
-            Page::Editor => Change::new().with_focus_key(FocusKey::Editor),
+        let (is_capturing, change) = match &page {
+            Page::SelectFile(_) => (
+                false,
+                Change::new()
+                    .with_effect(Effect::FetchFiles)
+                    .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
+            ),
+            Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
         };
 
         self.page.set(page);
+
+        IS_CAPTURING_ALL_KEYBOARD_INPUT.store(is_capturing, atomic::Ordering::Relaxed);
 
         change
     }
@@ -142,13 +165,12 @@ impl App for Gui {
     type Msg = Msg;
 
     type FocusKey = FocusKey;
-    type Event = event::Event;
+    type Event = input::event::Event;
     type AnyComponent<'a> = AnyComponent<'a>;
     type AnyPrimitive<'a> = AnyPrimitive<'a>;
     type Effect = Effect;
 
     fn new() -> Self {
-        println!("new app!");
         Self {
             page: Source::new(Page::Editor),
             message: Source::new(None),
@@ -242,7 +264,7 @@ impl App for Gui {
             _ => {}
         }
 
-        Change::new()
+        return Change::new();
     }
 
     fn view<'a>(
@@ -257,36 +279,38 @@ impl App for Gui {
         Self::AnyComponent<'a>,
         Self::AnyPrimitive<'a>,
     > {
-        match &*self.page {
-            Page::SelectFile(state) => state.view(v),
-            Page::Editor => {
-                let editor = v.interactive(
-                    FocusKey::Editor,
-                    |event| editor::Msg::from_event(event).map(Msg::Editor),
-                    |_| {
-                        v.component(
-                            Sizing::Fill,
-                            editor::Editor::new(self.editor.signal_ref()),
-                            [],
-                        )
-                    },
-                );
+        // match &*self.page {
+        //     Page::SelectFile(state) => state.view(v),
+        //     Page::Editor => {
+        //         let editor = v.interactive(
+        //             FocusKey::Editor,
+        //             |event| editor::Msg::from_event(event).map(Msg::Editor),
+        //             |_| {
+        //                 v.component(
+        //                     Sizing::Fill,
+        //                     editor::Editor::new(self.editor.signal_ref()),
+        //                     [],
+        //                 )
+        //             },
+        //         );
 
-                v.view(Direction::Vertical, [editor])
-            }
-        }
+        //         v.view(Direction::Vertical, [editor])
+        //     }
+        // }
+
+        v.view(Direction::Horizontal, [])
     }
 }
 
 enum Msg {
     Editor(editor::Msg),
+    Home(home::Msg),
+    SelectFile(select_file::Msg),
 
     SaveCompleted(Result<Name, LoadError>),
     DeleteCompleted(Result<(), LoadError>),
     RenameCompleted(Result<(), LoadError>),
     LoadCompleted(Result<editor::source::Source, LoadError>),
-
-    SelectFile(select_file::Msg),
 
     ChangeFocus(FocusKey),
 }
@@ -301,9 +325,14 @@ impl From<select_file::Msg> for Msg {
         Msg::SelectFile(editor_msg)
     }
 }
+impl From<home::Msg> for Msg {
+    fn from(home_msg: home::Msg) -> Msg {
+        Msg::Home(home_msg)
+    }
+}
 
 #[task]
-pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
+pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     let mut gui = Gui::new();
 
     // display.driver.display_on().unwrap();
@@ -312,22 +341,21 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
     // let Ok(_) = display.driver.clear(Gui::background_color());
     // display.driver.full_flush().await;
 
-    display.driver.clear(Gui::background_color());
-    display.driver.full_flush().await;
+    let mut driver = display::Driver::init(display, display::Orientation::Vertical).await;
+
+    driver.clear(Gui::background_color());
+    driver.full_flush().await;
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
-
-    let mut input_state = event::InputState::new();
 
     let mut effect_context = effect::Context {
         storage: Storage::new(storage),
     };
 
-    println!("Gui!");
+    let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, true);
+    driver.full_flush().await;
 
-    let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver, true);
-    display.driver.full_flush().await;
-    println!("Initial flush done!");
+    let receiver = channel::receiver();
 
     loop {
         // match display.driver.full_flush().await {
@@ -340,14 +368,11 @@ pub async fn app(mut display: DisplayHardware, storage: StorageHardware) {
         //     }
         // }
 
-        let events = input_state.receive_msgs(channel::receiver()).await;
+        let events = receive_all(&receiver).await;
 
         embedded_gui::app::dispatch(&mut gui, &mut effect_context, &mut internal_state, events)
             .await;
-        let Ok(_) =
-            embedded_gui::app::render(&mut gui, &mut internal_state, &mut display.driver, false);
-        display.driver.full_flush().await;
-
-        println!("Flush done!");
+        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, false);
+        driver.full_flush().await;
     }
 }

@@ -26,7 +26,8 @@ use esp_hal::{
     },
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     otg_fs::{Usb, UsbBus},
-    peripherals::{GPIO4, PSRAM, Peripherals, TIMG0},
+    pcnt::Pcnt,
+    peripherals::{CPU_CTRL, GPIO4, GPIO19, GPIO20, PSRAM, Peripherals, TIMG0},
     psram::{FlashFreq, Psram, PsramConfig, SpiRamFreq},
     ram,
     spi::{self, master::Spi},
@@ -35,7 +36,6 @@ use esp_hal::{
     timer::timg::TimerGroup,
     uart::{self, Uart, UartRx},
 };
-use esp_println::println;
 use esp_storage::FlashStorage;
 use keyboard_protocol::uart::BAUDRATE;
 use st7789v2::{ResetInterface, St7789v2};
@@ -43,28 +43,35 @@ use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use crate::{
-    audio::SAMPLE_RATE,
     gui::{
         self, colors,
         display::{self, DisplayHardware},
     },
-    hid::UsbHidHardware,
-    keyboard::KeyboardHardware,
+    input::{
+        encoder::{self, EncoderHardware},
+        keyboard::KeyboardHardware,
+    },
     storage::StorageHardware,
+    usb::{self, hid::UsbHidHardware},
 };
 
 pub struct Hardware {
     // pub timer_group_0: TimerGroup<'static, TIMG0<'static>>,
     // pub context_switch_interrupt: SoftwareInterruptControl<'static>,
-    pub cpu_control: CpuControl<'static>,
+    pub interrupt_1: SoftwareInterrupt<'static, 1>,
+    pub interrupt_2: SoftwareInterrupt<'static, 2>,
+    pub cpu_control: CPU_CTRL<'static>,
 
     // pub audio: AudioHardware,
     pub keyboard: KeyboardHardware,
+    pub encoder: EncoderHardware,
 
     pub display: DisplayHardware,
 
-    pub hid: UsbHidHardware,
+    // pub hid: UsbHidHardware,
     // pub debug_uart: Uart<'static, Blocking>,
+    // pub usb_device: UsbDevice<'static, UsbDriver>,
+    pub usb: usb::Peripherals<GPIO20<'static>, GPIO19<'static>>,
     pub storage: StorageHardware,
 }
 
@@ -93,15 +100,12 @@ impl Hardware {
             }
         );
 
-        let context_switch_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+        let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
         let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
 
-        esp_rtos::start(
-            timer_group_0.timer0,
-            context_switch_interrupt.software_interrupt0,
-        );
+        esp_rtos::start(timer_group_0.timer0, software_interrupt.software_interrupt0);
 
-        let cpu_control = CpuControl::new(peripherals.CPU_CTRL);
+        let cpu_control = peripherals.CPU_CTRL;
 
         // let analog_audio = {
         //     let i2s = I2s::new(
@@ -135,85 +139,26 @@ impl Hardware {
                 uart::Config::default().with_baudrate(BAUDRATE),
             )
             .map_err(InitError::UartConfigError)?
-            .with_rx(peripherals.GPIO12)
-            .into_async();
+            .with_rx(peripherals.GPIO12);
 
             KeyboardHardware { uart }
         };
 
-        println!("Keyboard setup complete!");
+        // println!("Keyboard setup complete!");
 
-        let (hid, usb_audio) = {
-            static EP_OUT_BUFFER: StaticCell<[u8; 1024]> = StaticCell::new();
+        let encoder = {
+            let mut counter = Pcnt::new(peripherals.PCNT);
 
-            let usb = Usb::new(peripherals.USB0, peripherals.GPIO20, peripherals.GPIO19);
-            let driver = esp_hal::otg_fs::asynch::Driver::new(
-                usb,
-                EP_OUT_BUFFER.init_with(|| [0; 1024]),
-                esp_hal::otg_fs::asynch::Config::default(),
-            );
+            encoder::configure_unit(&mut counter.unit0, peripherals.GPIO8, peripherals.GPIO7);
+            // encoder::configure_unit(&mut counter.unit1, peripherals.GPIO26, peripherals.GPIO27);
+            // encoder::configure_unit(&mut counter.unit1, peripherals.GPIO28, peripherals.GPIO29);
 
-            let config = {
-                // TODO: replace PID and VID
-                let mut config = embassy_usb::Config::new(0xffff, 0xffff);
-                config.product = Some("KeySynth");
-                config.max_power = 500;
-                config
-            };
-
-            let mut builder = {
-                static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
-                static BOS_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
-                static CONTROL_BUF: StaticCell<[u8; 64]> = StaticCell::new();
-
-                embassy_usb::Builder::new(
-                    driver,
-                    config,
-                    CONFIG_DESCRIPTOR.init_with(|| [0; 256]),
-                    BOS_DESCRIPTOR.init_with(|| [0; 256]),
-                    // No MSOS-specific descriptors
-                    &mut [],
-                    CONTROL_BUF.init_with(|| [0; 64]),
-                )
-            };
-
-            let hid = {
-                static STATE: StaticCell<hid::State> = StaticCell::new();
-                const REPORT_POLLING_MS: u8 = 4;
-
-                let config = hid::Config {
-                    report_descriptor: KeyboardReport::desc(),
-                    request_handler: None,
-                    poll_ms: REPORT_POLLING_MS,
-                    max_packet_size: 64,
-                    hid_subclass: hid::HidSubclass::No,
-                    hid_boot_protocol: hid::HidBootProtocol::Keyboard,
-                };
-
-                let writer =
-                    HidWriter::new(&mut builder, STATE.init_with(|| hid::State::new()), config);
-
-                UsbHidHardware { writer }
-            };
-
-            let audio = {
-                const AUDIO_REFRESH_MS: u8 = 2;
-
-                let (endpoint, _, _) = uac1::source::AudioSource::new(
-                    &mut builder,
-                    &[SAMPLE_RATE],
-                    uac1::SampleWidth::Width4Byte,
-                    AUDIO_REFRESH_MS,
-                    Some(uac1::terminal_type::TerminalType::Synthesizer),
-                );
-
-                UsbAudioHardware { endpoint }
-            };
-
-            (hid, audio)
+            EncoderHardware { counter }
         };
 
-        println!("USB setup complete!");
+        // println!("Encoder setup complete!");
+
+        // println!("USB setup complete!");
 
         let display = {
             let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
@@ -258,37 +203,38 @@ impl Hardware {
             //     .build(st7789v2::ColorMode::Rgb565, &mut delay)
             //     .map_err(InitError::DisplayInitError)?;
 
-            let mut driver = display::Driver::init(
-                display::DriverHardware {
-                    spi: spi.into_async(),
-                    reset_pin,
-                    dc_pin,
-                },
-                display::Orientation::Vertical,
-            )
-            .await;
+            display::DisplayHardware {
+                spi,
+                reset_pin,
+                dc_pin,
+            }
+
             // driver.clear_async(colors::ERROR).await;
 
             // driver.clear_async(colors::TEXT).await;
             // driver.clear(colors::ERROR);
             // driver.full_flush().await;
 
-            println!("Display setup complete!");
+            // println!("Display setup complete!");
 
             // driver.hard_reset().unwrap();
             // driver.clear(gui::colors::BACKGROUND_LIGHT);
             // driver.full_flush().await;
-
-            DisplayHardware { driver }
         };
 
-        println!("Display setup complete!");
+        // println!("Display setup complete!");
 
         let storage = StorageHardware {
             flash: FlashStorage::new(peripherals.FLASH),
         };
 
-        println!("Storage setup complete!");
+        let usb = usb::Peripherals {
+            usb: peripherals.USB0,
+            dp: peripherals.GPIO20,
+            dm: peripherals.GPIO19,
+        };
+
+        // println!("Storage setup complete!");
 
         // let debug_uart = Uart::new(peripherals.UART0, uart::Config::default())
         //     .map_err(InitError::UartConfigError)?
@@ -298,13 +244,17 @@ impl Hardware {
         Ok(Hardware {
             // context_switch_interrupt,
             // timer_group_0,
+            // debug_uart,
+            interrupt_1: software_interrupt.software_interrupt1,
+            interrupt_2: software_interrupt.software_interrupt2,
             cpu_control,
             // audio: AudioHardware {
             //     analog: analog_audio,
             //     usb: usb_audio,
             // },
             keyboard,
-            hid,
+            encoder,
+            usb,
             display,
             storage,
         })
@@ -314,15 +264,4 @@ impl Hardware {
 pub struct AnalogAudioHardware {
     pub i2s_tx: I2sTx<'static, Blocking>,
     pub tx_buffer: &'static mut [u8],
-}
-
-pub type UsbDriver = esp_hal::otg_fs::asynch::Driver<'static>;
-
-pub struct UsbAudioHardware {
-    pub endpoint: uac1::source::AudioSourceEpIn<'static, UsbDriver>,
-}
-
-pub struct AudioHardware {
-    pub analog: AnalogAudioHardware,
-    pub usb: UsbAudioHardware,
 }

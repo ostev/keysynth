@@ -26,10 +26,7 @@ impl Context {
 
         self.storage.save(&key_from_name(&name), &bytes).await?;
 
-        files
-            .files
-            .insert(name.clone())
-            .map_err(|_| LoadError::TooManyFiles)?;
+        files.create(name.clone())?;
 
         self.save_files(&files).await?;
 
@@ -46,12 +43,13 @@ impl Context {
     }
 
     async fn delete(&mut self, name: &Name) -> Result<(), LoadError> {
-        let mut files = self.storage.fetch_files().await?;
+        // let mut files = self.storage.fetch_files().await?;
 
-        files.files.remove(name);
-        self.save_files(&files).await?;
+        // files.files.remove(name);
+        // self.save_files(&files).await?;
 
-        self.storage.delete(&key_from_name(name)).await
+        // self.storage.delete(&key_from_name(name)).await
+        Ok(())
     }
 
     async fn rename(&mut self, old_name: Name, new_name: Name) -> Result<(), LoadError> {
@@ -68,11 +66,8 @@ impl Context {
             )
             .await?;
 
-        files.files.remove(&old_name);
-        files
-            .files
-            .insert(new_name)
-            .map_err(|_| LoadError::TooManyFiles)?;
+        files.remove(&old_name);
+        files.create(new_name)?;
         self.save_files(&files).await?;
 
         Ok(())

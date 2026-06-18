@@ -11,11 +11,8 @@ use embedded_gui::{
 use keyboard_protocol::{Key, StandardKey};
 
 use crate::{
-    gui::{
-        self, colors, display,
-        event::{self, Event, KeyEvent::Pressed},
-        select_file,
-    },
+    gui::{self, colors, display, event, select_file},
+    input::event::Event,
     storage::MAX_FILES,
     text::{Name, name_to_string},
 };

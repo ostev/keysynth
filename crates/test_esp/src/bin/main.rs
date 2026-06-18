@@ -10,6 +10,7 @@
 extern crate alloc;
 
 use core::mem::MaybeUninit;
+use core::panic::PanicInfo;
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -25,11 +26,15 @@ use esp_backtrace as _;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp_println::println;
-use test_esp::gui;
+use esp_rtos::embassy::{Executor, InterruptExecutor};
+use static_cell::StaticCell;
+use test_esp::audio::synth;
 use test_esp::hardware::Hardware;
-use test_esp::hid::hid;
-use test_esp::keyboard::keyboard_interface;
-use test_esp::router;
+use test_esp::input::keyboard::keyboard_interface;
+use test_esp::usb::hid::hid;
+use test_esp::usb::usb_device;
+use test_esp::{audio, input};
+use test_esp::{gui, usb};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -48,32 +53,53 @@ esp_bootloader_esp_idf::esp_app_desc!();
 //     }
 // }
 
-#[allow(
-    clippy::large_stack_frames,
-    reason = "it's not unusual to allocate larger buffers etc. in main"
-)]
+// #[allow(
+//     clippy::large_stack_frames,
+//     reason = "it's not unusual to allocate larger buffers etc. in main"
+// )]
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     let hardware = Hardware::new().await.unwrap();
 
-    let mut its_a_vec = Vec::new();
-    its_a_vec.push(3);
+    // {
+    //     static HIGH_PRIORITY_EXECUTOR: StaticCell<InterruptExecutor<1>> = StaticCell::new();
 
-    // let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+    //     let medium_priority_executor =
+    //         HIGH_PRIORITY_EXECUTOR.init_with(|| InterruptExecutor::new(hardware.interrupt_2));
+    //     let medium_priority =
+    //         medium_priority_executor.start(esp_hal::interrupt::Priority::Priority2);
 
-    // let context_switch_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    //     // input_spawner.spawn(encoder(hardware.encoder).unwrap());
+    // }
 
-    // let cpu_control = CpuControl::new(peripherals.CPU_CTRL);
+    {
+        static HIGH_PRIORITY_EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
 
-    // esp_rtos::start(
-    //     hardware.timer_group_0.timer0,
-    //     hardware.context_switch_interrupt.software_interrupt0,
-    // );
+        let high_priority_executor =
+            HIGH_PRIORITY_EXECUTOR.init_with(|| InterruptExecutor::new(hardware.interrupt_2));
+        let high_priority = high_priority_executor.start(esp_hal::interrupt::Priority::Priority3);
 
-    spawner.spawn(router().unwrap());
-    // // spawner.spawn(hid(hardware.hid).unwrap());
-    spawner.spawn(keyboard_interface(hardware.keyboard).unwrap());
+        high_priority.spawn(input::router().unwrap());
+        high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
+        high_priority.spawn(usb_device(high_priority, hardware.usb).unwrap());
+    }
+
+    {
+        static STACK: StaticCell<esp_hal::system::Stack<{ audio::STACK_SIZE }>> = StaticCell::new();
+
+        let stack = STACK.init_with(|| esp_hal::system::Stack::new());
+
+        esp_rtos::start_second_core(hardware.cpu_control, hardware.interrupt_1, stack, || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+
+            let executor = EXECUTOR.init_with(|| Executor::new());
+
+            executor.run(|spawner| {
+                spawner.spawn(synth().unwrap());
+            })
+        });
+    }
+
     spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
 
     // let my_vec: Vec<u8> = vec![0xff; 100_000];

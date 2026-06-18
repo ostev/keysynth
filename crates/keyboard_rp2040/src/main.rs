@@ -21,15 +21,19 @@ use embassy_sync::{
     blocking_mutex::{CriticalSectionMutex, raw::CriticalSectionRawMutex},
     channel::{Channel, Sender},
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_io::Write;
 use enumflags2::BitFlags;
 use keyboard_protocol::{
-    Key, KeyboardStatus, Modifier, SpecialKey, StandardKey,
+    Key, KeyboardStatus, Modifier, SpecialKey,
+    StandardKey::{self, A},
     layout::{self, Layout},
     uart::BAUDRATE,
 };
-use modular_bitfield::{bitfield, specifiers::B7};
+use modular_bitfield::{
+    bitfield,
+    specifiers::{B7, B15},
+};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -107,14 +111,22 @@ fn main() -> ! {
 #[task]
 async fn uart_communicator(mut uart: UartTx<'static, uart::Async>) {
     let receiver = CHANNEL.receiver();
+    let mut counter = 0;
 
     loop {
         let status = receiver.receive().await;
 
-        let mut output_buffer = [0; core::mem::size_of::<KeyboardStatus>()];
-        let serialized = postcard::to_slice(&status, &mut output_buffer).unwrap();
+        let mut output_buffer = [0; core::mem::size_of::<KeyboardStatus>() + 2];
+        {
+            let message_end = output_buffer.len() - 1;
+            let mut message_portion = &mut output_buffer[1..message_end];
+            postcard::to_slice(&status, &mut message_portion).unwrap();
+        }
 
-        match uart.write(serialized).await {
+        output_buffer[0] = keyboard_protocol::uart::START_BYTE;
+        output_buffer[output_buffer.len() - 1] = keyboard_protocol::uart::END_BYTE;
+
+        match uart.write(&output_buffer).await {
             Ok(_) => {}
             Err(error) => defmt::warn!(
                 "Failed to send keyboard status over UART! Here's the error {:?}",
@@ -153,7 +165,7 @@ impl<const R: usize, const C: usize> HardwareLayout<R, C> {
     // }
 }
 
-#[bitfield]
+// #[bitfield]
 #[derive(Copy, Clone)]
 struct DebouncedKey {
     // row: u8,
@@ -164,7 +176,7 @@ struct DebouncedKey {
     // /// the elapsed time in half-milliseconds since it changed is stored in the upper 7 bits.
     // is_pressed_and_elasped_half_ms_since_change: u8,
     is_pressed: bool,
-    elapsed_cycles_since_release: B7,
+    last_changed: Instant,
 }
 impl DebouncedKey {
     // pub const fn new(is_pressed: bool, elasped_half_ms_since_change: u8) -> DebouncedKey {
@@ -172,6 +184,12 @@ impl DebouncedKey {
     //         is_pressed_and_elasped_half_ms_since_change: is_presse
     //     }
     // }
+    pub fn new(is_pressed: bool) -> DebouncedKey {
+        DebouncedKey {
+            is_pressed: false,
+            last_changed: Instant::now(),
+        }
+    }
 }
 
 struct Debouncer<const R: usize, const C: usize> {
@@ -181,72 +199,85 @@ struct Debouncer<const R: usize, const C: usize> {
 impl<const R: usize, const C: usize> Debouncer<R, C> {
     pub fn new() -> Self {
         Self {
-            keys: core::array::repeat(core::array::repeat(
-                DebouncedKey::new()
-                    .with_is_pressed(false)
-                    .with_elapsed_cycles_since_release(127),
-            )),
+            keys: core::array::repeat(core::array::repeat(DebouncedKey::new(false))),
+            // keys: [[DebouncedKey::new(false); C]; R],
         }
     }
 
-    pub fn update(&mut self, row: usize, column: usize, is_pressed: bool) -> bool {
-        const MAX_ELAPSED_CYCLES: u8 = 127;
-        const DEFER_DEBOUNCE_CYCLE_DURATION: u8 = 125;
-        const _: () = {
-            // The debounce duration must be less than the maximum elapsed
-            // time we can store minus one, otherwise we can't count it.
-            // We use the maximum value as a specific state value, so it must be
-            // less than the max minus one.
-            assert!(DEFER_DEBOUNCE_CYCLE_DURATION < MAX_ELAPSED_CYCLES - 1);
-        };
+    pub fn update(&mut self, row: usize, column: usize, raw_is_pressed: bool) -> bool {
+        const INITIAL_DEBOUNCE_DURATION: Duration = Duration::from_millis(2);
+        const DEFER_DEBOUNCE_DURATION: Duration = Duration::from_millis(3);
+        // const _: () = {
+        //     // The debounce duration must be less than the maximum elapsed
+        //     // time we can store minus one, otherwise we can't count it.
+        //     // We use the maximum value as a specific state value, so it must be
+        //     // less than the max minus one.
+        //     assert!(INITIAL_DEBOUNCE_CYCLE_DURATION < MAX_ELAPSED_CYCLES - 1);
+        //     assert!(DEFER_DEBOUNCE_CYCLE_DURATION < MAX_ELAPSED_CYCLES - 1);
+        // };
 
         let key = &mut self.keys[row][column];
-        let previous_is_pressed = key.is_pressed();
-        let previous_elapsed_cycles = key.elapsed_cycles_since_release();
+        let debounced = key.is_pressed;
+        let elapsed = Instant::now() - key.last_changed;
 
-        // key.set_elapsed_cycles_since_change(new_val);
-        if is_pressed {
-            if previous_is_pressed || previous_elapsed_cycles == MAX_ELAPSED_CYCLES {
-                // The user just pressed the key on the keyboard or is holding
-                // the currently pressed key. We perform eager debouncing when a
-                // key is pressed, so we react immediately.
-                key.set_is_pressed(true);
-                key.set_elapsed_cycles_since_release(0);
-                // defmt::println!("PRESSED!!!");
-                true
-            } else {
-                // defmt::println!("NOISE!!");
-                // It's just noise, the key was released immediately prior.
-                false
-            }
+        // if is_pressed {
+        //     if previous_is_pressed {
+        //         if previous_elapsed_cycles >= INITIAL_DEBOUNCE_CYCLE_DURATION {
+        //             true
+        //         } else {
+        //             key.set_elapsed_cycles(u16::min(
+        //                 previous_elapsed_cycles + 1,
+        //                 INITIAL_DEBOUNCE_CYCLE_DURATION,
+        //             ));
+        //             false
+        //         }
+        //     } else {
+        //         key.set_is_pressed(true);
+        //         key.set_elapsed_cycles(0);
+
+        //         false
+        //     }
+        // } else {
+        //     if !previous_is_pressed {
+        //         if previous_elapsed_cycles >= DEFER_DEBOUNCE_CYCLE_DURATION {
+        //             false
+        //         } else {
+        //             key.set_elapsed_cycles(u16::min(
+        //                 previous_elapsed_cycles + 1,
+        //                 DEFER_DEBOUNCE_CYCLE_DURATION,
+        //             ));
+        //             true
+        //         }
+        //     } else {
+        //         key.set_is_pressed(false);
+        //         key.set_elapsed_cycles(0);
+        //         true
+        //     }
+        // }
+
+        if raw_is_pressed == debounced {
+            return debounced;
+        }
+
+        // raw != debounced -> start/count debounce timer
+        let threshold = if raw_is_pressed {
+            INITIAL_DEBOUNCE_DURATION
         } else {
-            if previous_is_pressed {
-                // defmt::println!(
-                //     "Previous is pressed with prev elapsed {}",
-                //     previous_elapsed_cycles
-                // );
-                // Perform defer debouncing when the key is released
-                if previous_elapsed_cycles > DEFER_DEBOUNCE_CYCLE_DURATION
-                    && previous_elapsed_cycles < MAX_ELAPSED_CYCLES
-                {
-                    // defmt::println!("RELEASE!!!");
-                    // Falling edge: the user just released the  key on the keyboard.
-                    key.set_elapsed_cycles_since_release(MAX_ELAPSED_CYCLES);
-                    key.set_is_pressed(false);
-                    false
-                } else {
-                    // defmt::println!("COUNT!!!");
-                    key.set_elapsed_cycles_since_release(previous_elapsed_cycles + 1);
+            DEFER_DEBOUNCE_DURATION
+        };
 
-                    // We still consider the key pressed, as it hasn't been long enough
-                    // since its release.
-                    true
-                }
-            } else {
-                // defmt::println!("RELEASEDDD!!!");
-                // The key continues to be unpressed
-                false
-            }
+        // let next = u16::min(elapsed.saturating_add(1), threshold);
+        // key.set_elapsed_cycles(next);
+
+        if elapsed >= threshold {
+            // key.set_is_pressed(raw_is_pressed);
+            // key.set_elapsed_cycles(threshold);
+            key.is_pressed = raw_is_pressed;
+            key.last_changed = Instant::now();
+            raw_is_pressed
+        } else {
+            // still debouncing: keep reporting the old (debounced) state
+            debounced
         }
     }
 }

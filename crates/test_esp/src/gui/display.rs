@@ -19,7 +19,6 @@ use esp_hal::{
     gpio::{Output, dedicated::OutputDriver},
     spi::{master::SpiDmaBus, slave::Spi},
 };
-use esp_println::println;
 use st7789v2::{ControllerInterface, DisplaySize, ResetInterface, St7789v2};
 
 pub const SIZE: DisplaySize = DisplaySize::new(240, 260);
@@ -29,10 +28,12 @@ pub const FRAMEBUFFER_SIZE: usize = st7789v2::framebuffer_size(SIZE, st7789v2::C
 pub type Color = Rgb565;
 
 pub struct DisplayHardware {
-    pub driver: Driver,
+    pub spi: SpiDmaBus<'static, Blocking>,
+    pub reset_pin: Output<'static>,
+    pub dc_pin: Output<'static>,
 }
 
-pub struct DriverHardware {
+struct DriverHardware {
     pub spi: SpiDmaBus<'static, Async>,
     pub reset_pin: Output<'static>,
     pub dc_pin: Output<'static>,
@@ -255,20 +256,23 @@ const WIDTH: usize = 240; // 240
 const HEIGHT: usize = 280; // 280
 
 impl Driver {
-    pub async fn init(hardware: DriverHardware, orientation: Orientation) -> Driver {
+    pub async fn init(hardware: DisplayHardware, orientation: Orientation) -> Driver {
+        let driver_hardware = DriverHardware {
+            spi: hardware.spi.into_async(),
+            reset_pin: hardware.reset_pin,
+            dc_pin: hardware.dc_pin,
+        };
+
         let mut driver = Driver {
-            hardware,
+            hardware: driver_hardware,
             orientation,
             framebuffer: Box::new(Framebuffer::new()),
             dirty_rect: Rectangle::zero(),
         };
 
         driver.hardware.reset();
-        println!("Reset!");
         driver.hardware.init_registers().await;
-        println!("Register!");
         driver.hardware.set_orientation(orientation).await;
-        println!("Orient!");
 
         driver
     }

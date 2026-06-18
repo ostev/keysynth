@@ -1,27 +1,38 @@
 use embassy_executor::task;
 use embassy_usb::class::hid::HidWriter;
 use enumflags2::BitFlags;
-use esp_println::println;
 use keyboard_protocol::{Modifier, StandardKey};
 use usbd_hid::descriptor::KeyboardReport;
 
-use crate::hardware::UsbDriver;
-
 mod channel {
-    use crate::{channel, hid::UsbKeyboardStatus};
+    use crate::{channel, usb::hid::UsbKeyboardStatus};
 
     channel! { UsbKeyboardStatus }
 }
 
 pub use channel::sender;
 
+use crate::usb;
+
 pub struct UsbKeyboardStatus {
     pub keys: [StandardKey; 6],
     pub modifier_bitfield: BitFlags<Modifier>,
 }
 
+impl UsbKeyboardStatus {
+    pub fn press(key: StandardKey) -> UsbKeyboardStatus {
+        let mut keys = [StandardKey::None; 6];
+        keys[0] = key;
+
+        UsbKeyboardStatus {
+            keys,
+            modifier_bitfield: BitFlags::empty(),
+        }
+    }
+}
+
 pub struct UsbHidHardware {
-    pub writer: HidWriter<'static, UsbDriver, 8>,
+    pub writer: HidWriter<'static, usb::Driver, 8>,
 }
 
 #[task]
@@ -45,10 +56,11 @@ pub async fn hid(mut hardware: UsbHidHardware) {
         };
         match hardware.writer.write_serialize(&report).await {
             Ok(()) => {}
-            Err(error) => println!(
-                "Warning: failed to send keyboard HID report, {:?}, with the following error: {:?}",
-                report, error
-            ),
+            // Err(error) => println!(
+            //     "Warning: failed to send keyboard HID report, {:?}, with the following error: {:?}",
+            //     report, error
+            // ),
+            Err(error) => {}
         }
     }
 }

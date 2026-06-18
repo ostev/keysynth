@@ -9,7 +9,8 @@ use embedded_gui::{
 use heapless::format;
 
 use crate::{
-    gui::{self, colors, display, event::Event},
+    gui::{self, colors, display},
+    input::event::Event,
     text::FixedByteString,
 };
 

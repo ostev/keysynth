@@ -1002,7 +1002,6 @@ dependencies = [
  "esp-metadata-generated",
  "esp-sync",
  "log",
- "portable-atomic",
 ]
 
 [[package]]
@@ -2214,6 +2213,7 @@ dependencies = [
  "critical-section",
  "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-futures 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-time 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-usb",
@@ -2234,6 +2234,7 @@ dependencies = [
  "esp-sync",
  "heapless 0.9.3",
  "keyboard_protocol",
+ "libm",
  "micromath",
  "postcard",
  "rpds",

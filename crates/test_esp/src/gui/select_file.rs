@@ -8,6 +8,8 @@ use embedded_gui::{
     view::View,
 };
 
+pub mod file_list;
+
 use crate::{
     gui::{
         self, colors, display,
@@ -16,11 +18,12 @@ use crate::{
             line::{self, LineEditor},
         },
         effect::Effect,
-        event::{self, Event},
-        file_list::{FileList, ScrollDirection},
+        event::{self},
+        select_file::file_list::{FileList, ScrollDirection},
         text_bar::TextBar,
     },
-    storage::{self, LoadError, MAX_FILES},
+    input::event::Event,
+    storage::{self, Files, LoadError, MAX_FILES},
     text::{NAME_SIZE, Name, fixed_str},
 };
 
@@ -92,16 +95,8 @@ impl SelectFile {
             }
 
             Msg::FilesReceived(files) => {
-                self.files.update(|_| {
-                    files.ok().map(|unsorted_files| {
-                        let mut reversed_files: heapless::Vec<Name, MAX_FILES> =
-                            unsorted_files.files.into_iter().cloned().collect();
-
-                        reversed_files.reverse();
-
-                        reversed_files
-                    })
-                });
+                self.files
+                    .update(|_| files.ok().map(Files::sorted_by_most_recent));
             }
 
             Msg::NoOp => {}

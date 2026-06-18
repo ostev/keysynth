@@ -1,3 +1,6 @@
+use core::iter;
+use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
+
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
 
 #[macro_export]
@@ -40,7 +43,7 @@ macro_rules! channel {
         #[inline]
         pub fn sender()
         -> embassy_sync::channel::Sender<'static, esp_sync::RawMutex, $message, { $capacity }> {
-            CHANNEL.receiver()
+            CHANNEL.sender()
         }
 
         #[inline]
@@ -49,4 +52,17 @@ macro_rules! channel {
             CHANNEL.receiver()
         }
     };
+}
+
+pub async fn receive_all<'ch, M: RawMutex, T, const N: usize>(
+    receiver: &Receiver<'ch, M, T, N>,
+) -> impl Iterator<Item = T> {
+    let first_message = receiver.receive().await;
+    iter::once(first_message).chain(try_receive_all(&receiver))
+}
+
+pub fn try_receive_all<'ch, M: RawMutex, T, const N: usize>(
+    receiver: &Receiver<'ch, M, T, N>,
+) -> impl Iterator<Item = T> {
+    iter::from_fn(move || receiver.try_receive().ok())
 }

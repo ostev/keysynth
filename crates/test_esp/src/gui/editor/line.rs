@@ -19,8 +19,8 @@ use crate::{
         background::draw_background,
         colors, display,
         editor::{cursor::draw_cursor, gap_buffer::GapBuffer},
-        event::{Event, KeyEvent},
     },
+    input::event::{Event, KeyEvent},
     text::{self, ByteChar, FixedByteString},
 };
 

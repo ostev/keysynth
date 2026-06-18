@@ -43,6 +43,8 @@ pub enum PlayError {
     NoMatchingVoice,
 }
 
+pub type Sample = [u16; 2];
+
 impl<const N: usize, const S: usize> Synth<N, S> {
     pub const fn new(sample_rate: f32, wavetables: [Wavetable<S>; 2]) -> Self {
         Self {
@@ -63,10 +65,22 @@ impl<const N: usize, const S: usize> Synth<N, S> {
     }
 
     pub fn note_on(&mut self, note: Event) -> Result<(), PlayError> {
-        let free_voice = self.voices.iter_mut().find(|voice| match voice {
-            Some(voice) => !voice.is_active(),
-            None => true,
-        });
+        let (matching_voice, ended_voice, inactive_voice) = self.voices.iter_mut().fold(
+            (None, None, None),
+            |(matching_voice, ended_voice, inactive_voice), voice| match voice {
+                Some(unwrapped_voice) => {
+                    if unwrapped_voice.note().note == note.note {
+                        (Some(voice), ended_voice, inactive_voice)
+                    } else if !unwrapped_voice.is_active() {
+                        (matching_voice, ended_voice, Some(voice))
+                    } else {
+                        (matching_voice, ended_voice, inactive_voice)
+                    }
+                }
+                None => (matching_voice, Some(voice), inactive_voice),
+            },
+        );
+        let free_voice = matching_voice.or(ended_voice.or(inactive_voice));
 
         match free_voice {
             Some(voice) => {
@@ -104,7 +118,7 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         Ok(())
     }
 
-    pub fn sample(&mut self) -> f32 {
+    pub fn sample(&mut self) -> Sample {
         let (sum, count) = self
             .voices
             .iter_mut()
@@ -129,20 +143,31 @@ impl<const N: usize, const S: usize> Synth<N, S> {
             (sum * self.voice_gain).clamp(0.0, 1.0)
         };
 
-        self.vcf
+        let sample = self
+            .vcf
             .sample(output, self.cutoff, self.resonance)
-            .clamp(0.0, 1.0)
+            .clamp(0.0, 1.0);
+        let integer_sample = (sample * u16::MAX as f32) as u16;
+
+        [integer_sample, integer_sample]
     }
 
-    pub fn sample_into(&mut self, buffer: &mut [f32]) {
+    pub fn sample_into(&mut self, buffer: &mut [Sample]) {
         for sample in buffer.iter_mut() {
             *sample = self.sample();
         }
     }
 
-    pub fn sample_many<const BUFFER_SIZE: usize>(&mut self) -> [f32; BUFFER_SIZE] {
-        let mut buffer = [0.0; BUFFER_SIZE];
+    pub fn sample_many<const BUFFER_SIZE: usize>(&mut self) -> [Sample; BUFFER_SIZE] {
+        let mut buffer = [[0; 2]; BUFFER_SIZE];
         self.sample_into(&mut buffer);
         buffer
+    }
+
+    pub fn is_active(&mut self) -> bool {
+        self.voices
+            .iter()
+            .filter_map(Option::as_ref)
+            .any(|voice| voice.is_ended())
     }
 }

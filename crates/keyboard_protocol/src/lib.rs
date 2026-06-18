@@ -30,6 +30,11 @@ impl KeyboardStatus {
         }
     }
 
+    pub fn is_super(&self) -> bool {
+        self.modifier_bitfield.contains(Modifier::LeftSuper)
+            || self.modifier_bitfield.contains(Modifier::RightSuper)
+    }
+
     pub fn diff(
         self,
         previous: KeyboardStatus,
@@ -86,8 +91,8 @@ pub enum SpecialKey {
     Three = 0x04,
     Four = 0x08,
     Five = 0x10,
-    Six = 0x20,
-    Seven = 0x40,
+    // Six = 0x20,
+    // Seven = 0x40,
     Fn = 0x80,
 }
 
@@ -193,6 +198,17 @@ pub enum StandardKey {
     Left,
     Down,
     Up,
+
+    // Media control
+    VolumeUp = 0x80,
+    VolumeDown,
+    Pause = 0x48,
+
+    // Print screen
+    SysRq = 0x46,
+
+    // Forward delete
+    Delete = 0x4c,
 }
 
 impl StandardKey {
