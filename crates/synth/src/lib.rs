@@ -43,7 +43,7 @@ pub enum PlayError {
     NoMatchingVoice,
 }
 
-pub type Sample = [u16; 2];
+pub type Sample = [i16; 2];
 
 impl<const N: usize, const S: usize> Synth<N, S> {
     pub const fn new(sample_rate: f32, wavetables: [Wavetable<S>; 2]) -> Self {
@@ -140,14 +140,14 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         let output = if count == 0 {
             0.0
         } else {
-            (sum * self.voice_gain).clamp(0.0, 1.0)
+            (sum * self.voice_gain).clamp(-1.0, 1.0)
         };
 
         let sample = self
             .vcf
             .sample(output, self.cutoff, self.resonance)
-            .clamp(0.0, 1.0);
-        let integer_sample = (sample * u16::MAX as f32) as u16;
+            .clamp(-1.0, 1.0);
+        let integer_sample = (sample * i16::MAX as f32) as i16;
 
         [integer_sample, integer_sample]
     }

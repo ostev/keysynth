@@ -7,18 +7,18 @@ use embassy_usb::{
     },
 };
 use esp_hal::{
+    interrupt::software::SoftwareInterrupt,
     otg_fs::{self, Usb},
-    peripherals::{GPIO19, GPIO20, USB0},
+    peripherals::{CPU_CTRL, GPIO19, GPIO20, USB0},
 };
 use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
-use crate::usb::{
-    audio::{AUDIO_REFRESH_MS, SAMPLE_RATE},
-    hid::UsbHidHardware,
+use crate::{
+    audio::{self, AUDIO_REFRESH_MS},
+    usb::{audio::SAMPLE_RATE, hid::UsbHidHardware},
 };
 
-pub mod audio;
 pub mod hid;
 
 pub type Driver = esp_hal::otg_fs::asynch::Driver<'static>;
@@ -128,12 +128,14 @@ pub struct UsbHardware {
 #[task]
 pub async fn usb_device(
     spawner: SendSpawner,
+    cpu_control: CPU_CTRL<'static>,
+    interrupt: SoftwareInterrupt<'static, 1>,
     peripherals: Peripherals<GPIO20<'static>, GPIO19<'static>>,
 ) -> ! {
     let mut hardware = peripherals.build();
 
     spawner.spawn(hid::hid(hardware.hid).unwrap());
-    spawner.spawn(audio::usb_audio(spawner, hardware.audio).unwrap());
+    audio::start(cpu_control, interrupt, hardware.audio);
 
     hardware.device.run().await
 }

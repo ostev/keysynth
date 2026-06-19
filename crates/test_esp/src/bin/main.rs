@@ -23,12 +23,11 @@ use esp_hal::{clock::CpuClock, interrupt::software::SoftwareInterrupt};
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 
-use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_executor::{Spawner, task};
+use embassy_time::{Duration, Ticker, Timer};
 use esp_println::println;
 use esp_rtos::embassy::{Executor, InterruptExecutor};
 use static_cell::StaticCell;
-use test_esp::audio::synth;
 use test_esp::hardware::Hardware;
 use test_esp::input::keyboard::keyboard_interface;
 use test_esp::usb::hid::hid;
@@ -81,23 +80,16 @@ async fn main(spawner: Spawner) {
 
         high_priority.spawn(input::router().unwrap());
         high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
-        high_priority.spawn(usb_device(high_priority, hardware.usb).unwrap());
-    }
-
-    {
-        static STACK: StaticCell<esp_hal::system::Stack<{ audio::STACK_SIZE }>> = StaticCell::new();
-
-        let stack = STACK.init_with(|| esp_hal::system::Stack::new());
-
-        esp_rtos::start_second_core(hardware.cpu_control, hardware.interrupt_1, stack, || {
-            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-
-            let executor = EXECUTOR.init_with(|| Executor::new());
-
-            executor.run(|spawner| {
-                spawner.spawn(synth().unwrap());
-            })
-        });
+        high_priority.spawn(
+            usb_device(
+                high_priority,
+                hardware.cpu_control,
+                hardware.interrupt_1,
+                hardware.usb,
+            )
+            .unwrap(),
+        );
+        high_priority.spawn(say_hi().unwrap());
     }
 
     spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
@@ -122,4 +114,14 @@ async fn main(spawner: Spawner) {
     // );
     // Timer::after(Duration::from_secs(2)).await;
     // }
+}
+
+#[task]
+async fn say_hi() -> ! {
+    let mut ticker = Ticker::every(Duration::from_millis(500));
+
+    loop {
+        println!("HEYAAAA!!!!");
+        ticker.next().await;
+    }
 }
