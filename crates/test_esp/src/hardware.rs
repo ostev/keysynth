@@ -44,7 +44,7 @@ use crate::{
         keyboard::KeyboardHardware,
     },
     storage::StorageHardware,
-    usb::{self, hid::UsbHidHardware},
+    usb,
 };
 
 pub struct Hardware {

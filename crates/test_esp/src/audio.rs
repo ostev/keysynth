@@ -29,16 +29,6 @@ use crate::{
 pub const MAX_POLYPHONY: usize = 4;
 pub const WAVETABLE_SIZE: usize = 2048;
 
-mod channel {
-    use super::Event;
-    use crate::channel;
-
-    pub const CAPACITY: usize = 16;
-
-    channel!(Event, CAPACITY);
-}
-pub use channel::sender;
-
 const BASE_NOTE: Note = Note::C3;
 
 pub enum Event {
@@ -169,31 +159,6 @@ fn note_from_input_event(
 //     }
 // }
 
-fn apply_event<const N: usize, const S: usize>(
-    event: Event,
-    keyboard: &synth::keyboard::Keyboard,
-    synth: &mut Synth<N, S>,
-) {
-    match event {
-        Event::Input(input) => {
-            if let Some((note, is_pressed)) = note_from_input_event(keyboard, input) {
-                // We discard the error as we don't really care if there aren't any free voices.
-                // The note just won't play.
-                let _ = if is_pressed {
-                    let note_event = synth::note::Event {
-                        note,
-                        timestamp: Instant::now().as_micros(),
-                    };
-
-                    synth.note_on(note_event)
-                } else {
-                    synth.note_off(note)
-                };
-            }
-        }
-    }
-}
-
 pub struct State {
     synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE>,
     keyboard: synth::keyboard::Keyboard,
@@ -202,17 +167,17 @@ impl State {
     pub fn new() -> State {
         let default_wavetable = Wavetable::from_fn(libm::sinf);
 
-        let mut synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> = Synth::new(
+        let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> = Synth::new(
             SAMPLE_RATE as f32,
             [default_wavetable.clone(), default_wavetable],
         );
 
-        synth
-            .note_on(note::Event {
-                note: Note::C3,
-                timestamp: Instant::now().as_micros(),
-            })
-            .unwrap();
+        // synth
+        //     .note_on(note::Event {
+        //         note: Note::C3,
+        //         timestamp: Instant::now().as_micros(),
+        //     })
+        //     .unwrap();
 
         let keyboard = synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
 
@@ -221,6 +186,33 @@ impl State {
 
     pub fn sample(&mut self) -> AudioPacket {
         self.synth.sample_many()
+    }
+
+    pub fn apply_events(&mut self, events: impl IntoIterator<Item = Event>) {
+        for event in events {
+            self.apply_event(event);
+        }
+    }
+
+    pub fn apply_event(&mut self, event: Event) {
+        match event {
+            Event::Input(input) => {
+                if let Some((note, is_pressed)) = note_from_input_event(&self.keyboard, input) {
+                    // We discard the error as we don't really care if there aren't any free voices.
+                    // The note just won't play.
+                    let _ = if is_pressed {
+                        let note_event = synth::note::Event {
+                            note,
+                            timestamp: Instant::now().as_micros(),
+                        };
+
+                        self.synth.note_on(note_event)
+                    } else {
+                        self.synth.note_off(note)
+                    };
+                }
+            }
+        }
     }
 }
 

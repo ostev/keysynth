@@ -1,18 +1,11 @@
 use embassy_executor::task;
-use enumflags2::BitFlags;
+use enumflags2::{BitFlags, make_bitflags};
 use keyboard_protocol::{Modifier, StandardKey};
 use usbd_hid::descriptor::KeyboardReport;
 
-mod channel {
-    use crate::{channel, usb::hid::UsbKeyboardStatus};
+pub const POLL_MS: u8 = 4;
 
-    channel! { UsbKeyboardStatus }
-}
-
-pub use channel::sender;
-
-use crate::usb;
-
+#[derive(Clone, Copy, Debug)]
 pub struct UsbKeyboardStatus {
     pub keys: [StandardKey; 6],
     pub modifier_bitfield: BitFlags<Modifier>,
@@ -28,11 +21,31 @@ impl UsbKeyboardStatus {
             modifier_bitfield: BitFlags::empty(),
         }
     }
+    pub const fn empty() -> UsbKeyboardStatus {
+        UsbKeyboardStatus {
+            keys: [StandardKey::None; 6],
+            modifier_bitfield: BitFlags::EMPTY,
+        }
+    }
 }
 
-pub struct UsbHidHardware {
-    // pub writer: HidWriter<'static, usb::Bus, 8>,
+impl Into<KeyboardReport> for UsbKeyboardStatus {
+    fn into(self) -> KeyboardReport {
+        KeyboardReport {
+            // Safety: the `KeyCode`s are `#[repr(u8)]`, so we can safely
+            // cast then into an array of u8s. Going the other direction could
+            // cause issues, however.
+            keycodes: unsafe { core::mem::transmute(self.keys) },
+            leds: 0,
+            modifier: self.modifier_bitfield.bits(),
+            reserved: 0,
+        }
+    }
 }
+
+// pub struct UsbHidHardware {
+// pub writer: HidWriter<'static, usb::Bus, 8>,
+// }
 
 // #[task]
 // pub async fn hid(mut hardware: UsbHidHardware) {

@@ -78,9 +78,8 @@ pub async fn router() {
     let keyboard = keyboard::receiver();
     let encoder = encoder::receiver();
 
-    let hid = usb::hid::sender();
     let gui = gui::sender();
-    let audio = audio::sender();
+    let audio = usb::audio_sender();
 
     let mut state = State::new();
 
@@ -108,11 +107,12 @@ pub async fn router() {
         match mode {
             KeyboardMode::Passthrough => match notification {
                 Either::First(keyboard_status) => {
-                    hid.send(UsbKeyboardStatus {
-                        keys: keyboard_status.keys,
-                        modifier_bitfield: keyboard_status.modifier_bitfield,
-                    })
-                    .await;
+                    unsafe {
+                        usb::set_keyboard_status(UsbKeyboardStatus {
+                            keys: keyboard_status.keys,
+                            modifier_bitfield: keyboard_status.modifier_bitfield,
+                        });
+                    }
 
                     for event in events {
                         if is_toggle_mode(&event) {
