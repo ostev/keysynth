@@ -1,13 +1,5 @@
 use core::mem::MaybeUninit;
 
-use embassy_usb::{
-    UsbDevice,
-    class::{
-        hid::{self, HidWriter},
-        uac1,
-    },
-    driver::host::pipe::Out,
-};
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{Rgb565, RgbColor},
@@ -71,7 +63,7 @@ pub struct Hardware {
     // pub hid: UsbHidHardware,
     // pub debug_uart: Uart<'static, Blocking>,
     // pub usb_device: UsbDevice<'static, UsbDriver>,
-    pub usb: usb::Peripherals<GPIO20<'static>, GPIO19<'static>>,
+    pub usb: usb::UsbHardware,
     pub storage: StorageHardware,
 }
 
@@ -232,7 +224,8 @@ impl Hardware {
             usb: peripherals.USB0,
             dp: peripherals.GPIO20,
             dm: peripherals.GPIO19,
-        };
+        }
+        .build();
 
         // println!("Storage setup complete!");
 

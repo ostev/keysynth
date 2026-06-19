@@ -37,8 +37,6 @@ embedded-gui = { path = "../../../embedded-gui" }
 
 static_cell = "2.1.1"
 usbd-hid = "0.10.0"
-
-embassy-usb = { git = "https://github.com/embassy-rs/embassy.git" }
 embassy-executor = "0.10.0"
 embassy-time = "0.5.1"
 embassy-sync = "0.8.0"
@@ -72,11 +70,13 @@ esp-println = { version = "0.17.0", features = [
     "uart",
 ], default-features = false }
 libm = "0.2.16"
+usb-device = { version = "0.3.2", features = ["control-buffer-256"] }
+usbd-audio = "0.4.0"
 
 
 [patch.crates-io]
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy.git" }
-embassy-time-driver = { git = "https://github.com/embassy-rs/embassy.git" }
+# embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy.git" }
+# embassy-time-driver = { git = "https://github.com/embassy-rs/embassy.git" }
 
 [profile.dev]
 # Rust debug is too slow.

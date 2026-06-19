@@ -1414,6 +1414,7 @@ dependencies = [
 name = "synth"
 version = "0.1.0"
 dependencies = [
+ "heapless",
  "libm",
  "micromath",
  "textplots",

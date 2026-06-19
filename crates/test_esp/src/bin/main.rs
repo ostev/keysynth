@@ -30,8 +30,7 @@ use esp_rtos::embassy::{Executor, InterruptExecutor};
 use static_cell::StaticCell;
 use test_esp::hardware::Hardware;
 use test_esp::input::keyboard::keyboard_interface;
-use test_esp::usb::hid::hid;
-use test_esp::usb::usb_device;
+
 use test_esp::{audio, input};
 use test_esp::{gui, usb};
 
@@ -80,16 +79,40 @@ async fn main(spawner: Spawner) {
 
         high_priority.spawn(input::router().unwrap());
         high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
-        high_priority.spawn(
-            usb_device(
-                high_priority,
-                hardware.cpu_control,
-                hardware.interrupt_1,
-                hardware.usb,
-            )
-            .unwrap(),
-        );
+        // high_priority.spawn(
+        //     usb_device(
+        //         high_priority,
+        //         hardware.cpu_control,
+        //         hardware.interrupt_1,
+        //         hardware.usb,
+        //     )
+        //     .unwrap(),
+        // );
         high_priority.spawn(say_hi().unwrap());
+    }
+
+    {
+        static STACK: StaticCell<esp_hal::system::Stack<{ usb::STACK_SIZE }>> = StaticCell::new();
+
+        let stack = STACK.init_with(|| esp_hal::system::Stack::new());
+
+        esp_rtos::start_second_core(
+            hardware.cpu_control,
+            hardware.interrupt_1,
+            stack,
+            move || {
+                // static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+
+                // let executor = EXECUTOR.init_with(|| Executor::new());
+
+                // executor.run(|spawner| {
+                // spawner.spawn(feedback(hardware.feedback_endpoint).unwrap());
+                // spawner.spawn(synth(hardware.audio_endpoint).unwrap());
+                // spawner.spawn(say_hi().unwrap());
+                // })
+                usb::device_loop(hardware.usb)
+            },
+        );
     }
 
     spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());

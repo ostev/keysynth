@@ -43,7 +43,7 @@ pub enum PlayError {
     NoMatchingVoice,
 }
 
-pub type Sample = [i16; 2];
+pub type Sample = i16;
 
 impl<const N: usize, const S: usize> Synth<N, S> {
     pub const fn new(sample_rate: f32, wavetables: [Wavetable<S>; 2]) -> Self {
@@ -118,48 +118,93 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         Ok(())
     }
 
-    pub fn sample(&mut self) -> Sample {
-        let (sum, count) = self
-            .voices
-            .iter_mut()
-            .filter_map(|option_voice| match option_voice {
-                Some(voice) => {
-                    if voice.is_ended() {
-                        *option_voice = None;
-                        None
-                    } else {
-                        Some(voice.sample(&self.wavetables, 0.0))
-                    }
-                }
-                None => None,
-            })
-            .fold((0.0, 0usize), |(sum, count), sample| {
-                (sum + sample, count + 1)
-            });
+    // pub fn sample(&mut self) -> Sample {
+    //     let voices: heapless::Vec<&mut Voice<S>, N> = self
+    //         .voices
+    //         .iter_mut()
+    //         .filter_map(|option_voice| match option_voice {
+    //             Some(voice) => {
+    //                 if voice.is_ended() {
+    //                     *option_voice = None;
+    //                     None
+    //                 } else {
+    //                     // Some(voice.sample(&self.wavetables, 0.0))
+    //                     Some(voice)
+    //                 }
+    //             }
+    //             None => None,
+    //         })
+    //         .collect();
+    // .fold((0.0, 0usize), |(sum, count), sample| {
+    //     (sum + sample, count + 1)
+    // });
 
-        let output = if count == 0 {
-            0.0
-        } else {
-            (sum * self.voice_gain).clamp(-1.0, 1.0)
-        };
+    // let output = if count == 0 {
+    //     0.0
+    // } else {
+    //     (sum * self.voice_gain).clamp(-1.0, 1.0)
+    // };
 
-        let sample = self
-            .vcf
-            .sample(output, self.cutoff, self.resonance)
-            .clamp(-1.0, 1.0);
-        let integer_sample = (sample * i16::MAX as f32) as i16;
+    // let sample = self
+    //     .vcf
+    //     .sample(output, self.cutoff, self.resonance)
+    //     .clamp(-1.0, 1.0);
+    // let integer_sample = (sample * i16::MAX as f32) as i16;
 
-        [integer_sample, integer_sample]
-    }
+    // [integer_sample, integer_sample]
+    // }
 
     pub fn sample_into(&mut self, buffer: &mut [Sample]) {
+        let mut voices: heapless::Vec<&mut Voice<S>, N> = self
+            .voices
+            .iter_mut()
+            .filter_map(|option_voice| {
+                if option_voice.as_ref().is_some_and(|voice| voice.is_ended()) {
+                    *option_voice = None;
+                    None
+                } else if let Some(voice) = option_voice.as_mut() {
+                    Some(voice)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         for sample in buffer.iter_mut() {
-            *sample = self.sample();
+            *sample = Synth::<N, S>::sample_voices(
+                &mut self.vcf,
+                &self.wavetables,
+                self.voice_gain,
+                self.cutoff,
+                self.resonance,
+                voices.iter_mut().map(|voice| {
+                    let dereferenced_voice: &mut Voice<S> = *voice;
+                    dereferenced_voice
+                }),
+            );
         }
     }
 
+    fn sample_voices<'a>(
+        vcf: &mut Vcf,
+        wavetables: &[Wavetable<S>; 2],
+        voice_gain: f32,
+        cutoff: f32,
+        resonance: f32,
+        voices: impl IntoIterator<Item = &'a mut Voice<S>>,
+    ) -> Sample {
+        let voice_output = voices
+            .into_iter()
+            .map(|voice| voice.sample(wavetables, 0.0) * voice_gain)
+            .sum();
+
+        let with_vcf = vcf.sample(voice_output, cutoff, resonance).clamp(-1.0, 1.0);
+
+        (with_vcf * i16::MAX as f32) as i16
+    }
+
     pub fn sample_many<const BUFFER_SIZE: usize>(&mut self) -> [Sample; BUFFER_SIZE] {
-        let mut buffer = [[0; 2]; BUFFER_SIZE];
+        let mut buffer = [0; BUFFER_SIZE];
         self.sample_into(&mut buffer);
         buffer
     }
