@@ -172,13 +172,6 @@ impl State {
             [default_wavetable.clone(), default_wavetable],
         );
 
-        // synth
-        //     .note_on(note::Event {
-        //         note: Note::C3,
-        //         timestamp: Instant::now().as_micros(),
-        //     })
-        //     .unwrap();
-
         let keyboard = synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
 
         State { synth, keyboard }
@@ -216,134 +209,11 @@ impl State {
     }
 }
 
-// fn synth(hardware: Hardware) {
-//     let keyboard = synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
-
-//     let default_wavetable = Wavetable::from_fn(libm::sinf);
-
-//     let mut synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> = Synth::new(
-//         SAMPLE_RATE as f32,
-//         [default_wavetable.clone(), default_wavetable],
-//     );
-
-//     let receiver = channel::receiver();
-
-//     let mut ticker = Ticker::every(Duration::from_millis(AUDIO_REFRESH_MS.into()));
-
-//     let mut count = 0;
-//     let mut total_time = 0;
-
-//     let mut synth_count = 0;
-//     let mut synth_time = 0;
-
-//     loop {
-//         let start = Instant::now();
-//         // let events = try_receive_all(&receiver);
-//         let event = receiver.try_receive();
-
-//         // for event in events {
-
-//         // }
-
-//         let start_synth = Instant::now();
-//         let samples: AudioPacket = synth.sample_many();
-//         synth_time += start_synth.elapsed().as_micros();
-//         synth_count += 1;
-
-//         // write_audio_packet(&mut endpoint, &samples).await;
-
-//         let time = start.elapsed();
-//         // println!("Time taken: {}", time.as_micros());
-//         total_time += time.as_micros();
-//         count += 1;
-
-//         if count >= 300 {
-//             println!("Average time: {} us", total_time / count);
-//             count = 0;
-//             total_time = 0;
-//         }
-
-//         if synth_count >= 300 {
-//             println!("Average synth time: {} us", synth_time / synth_count);
-//             synth_count = 0;
-//             synth_time = 0;
-//         }
-
-//         // out.send(samples).await;
-
-//         // ticker.next().await;
-//     }
-// }
-
-// type AudioPacket = [Sample; ((AUDIO_REFRESH_MS as f32 / 1000.0) * SAMPLE_RATE as f32) as usize];
 type AudioPacket = [Sample; 48];
 
 pub const AUDIO_REFRESH_MS: u8 = 4;
 pub const SAMPLE_RATE: u32 = 48_000;
 
 pub struct Hardware {
-    pub device: AudioClass<'static, usb::Bus>, // pub audio_endpoint: uac1::source::AudioSourceEpIn<'static, usb::Bus>,
-                                               // pub feedback_endpoint: uac1::source::AudioSourceEpIn<'static, usb::Bus>,
+    pub device: AudioClass<'static, usb::Bus>,
 }
-
-// pub fn start(
-//     cpu_control: CPU_CTRL<'static>,
-//     interrupt: SoftwareInterrupt<'static, 1>,
-//     hardware: Hardware,
-// ) {
-//     static STACK: StaticCell<esp_hal::system::Stack<{ STACK_SIZE }>> = StaticCell::new();
-
-//     let stack = STACK.init_with(|| esp_hal::system::Stack::new());
-
-//     esp_rtos::start_second_core(cpu_control, interrupt, stack, move || {
-// static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-
-// let executor = EXECUTOR.init_with(|| Executor::new());
-
-// executor.run(|spawner| {
-// spawner.spawn(feedback(hardware.feedback_endpoint).unwrap());
-// spawner.spawn(synth(hardware.audio_endpoint).unwrap());
-// spawner.spawn(say_hi().unwrap());
-// })
-//     });
-// }
-
-// #[task]
-// async fn say_hi() -> ! {
-//     let mut ticker = Ticker::every(Duration::from_millis(500));
-
-//     loop {
-//         println!("Hi");
-//         ticker.next().await;
-//     }
-// }
-
-// #[task]
-// async fn feedback(mut feedback_endpoint: AudioSourceEpIn<'static, usb::Bus>) {
-//     // Convert the sample rate to USB's 3-byte 10.14 sample rate format by multiply it by
-//     // 2^14 and then taking the left three bytes in little-endian order.
-//     let feedback_buffer = &(SAMPLE_RATE << 14).to_le_bytes()[..3];
-
-//     let mut ticker = Ticker::every(Duration::from_millis(AUDIO_REFRESH_MS.into()));
-
-//     loop {
-//         // println!("Waiting for enable");
-//         feedback_endpoint.wait_enabled().await;
-
-//         match feedback_endpoint.write(feedback_buffer).await {
-//             Ok(_) => {
-//                 // println!("AAAA");
-//                 // Wait until the next audio frame to send the updated sample rate
-//                 ticker.next().await;
-//             }
-//             Err(error) => {
-//                 println!(
-//                     "Error: failed to write to audio feedback buffer ({:?})",
-//                     error
-//                 );
-//                 // Short delay before retrying in case the error is transient
-//                 embassy_time::Timer::after_micros(100).await;
-//             }
-//         }
-//     }
-// }

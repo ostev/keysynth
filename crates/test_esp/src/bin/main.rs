@@ -96,47 +96,12 @@ async fn main(spawner: Spawner) {
 
         let stack = STACK.init_with(|| esp_hal::system::Stack::new());
 
-        esp_rtos::start_second_core(
-            hardware.cpu_control,
-            hardware.interrupt_1,
-            stack,
-            move || {
-                // static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-
-                // let executor = EXECUTOR.init_with(|| Executor::new());
-
-                // executor.run(|spawner| {
-                // spawner.spawn(feedback(hardware.feedback_endpoint).unwrap());
-                // spawner.spawn(synth(hardware.audio_endpoint).unwrap());
-                // spawner.spawn(say_hi().unwrap());
-                // })
-                usb::device_loop(hardware.usb)
-            },
-        );
+        esp_rtos::start_second_core(hardware.cpu_control, hardware.interrupt_1, stack, || {
+            usb::device_loop(hardware.usb)
+        });
     }
 
     spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
-
-    // let my_vec: Vec<u8> = vec![0xff; 100_000];
-
-    // for value in my_vec {
-    //     if value != 0xff {
-    //         panic!("Bad ram!")
-    //     }
-    // }
-
-    // loop {
-    // println!("heyyy!!! {}", its_a_vec.last().unwrap_or(&0));
-    // its_a_vec.push(its_a_vec.last().unwrap_or(&0) + 1);
-    // hardware.debug_uart.write("Hello!!!".as_bytes()).unwrap();
-    // let mut buf: [u8; 1] = [0; 1];
-    // hardware.debug_uart.read(&mut buf).unwrap();
-    // println!(
-    //     "heyyy!!! here's some data: {}",
-    //     str::from_utf8(&buf).unwrap()
-    // );
-    // Timer::after(Duration::from_secs(2)).await;
-    // }
 }
 
 #[task]
