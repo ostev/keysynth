@@ -251,12 +251,14 @@ pub fn device_loop(mut hardware: UsbHardware) -> ! {
             // We don't care about errors here, since we'll write the next samples soon enough
             // anyway.
             let _ = hardware.hid.push_input(&report);
+
             match hardware.audio.write(bytemuck::cast_slice(&sample)) {
                 Err(usbd_audio::Error::UsbError(usbd_hid::UsbError::WouldBlock)) => {
-                    // This poll wasn't meant for audio.
+                    // This poll wasn't meant for audio. We'll write the sample next time.
                 }
                 _ => {
-                    // Write the next sample to the buffer
+                    // Write the next sample to the buffer. The previous one either wrote successfully
+                    // or a meaningfull error occurred, so we should move on to the next sample.
                     sample = audio.sample();
                 }
             }
