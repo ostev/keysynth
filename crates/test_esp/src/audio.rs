@@ -1,19 +1,12 @@
-use core::{future, mem::MaybeUninit};
-
-use alloc::sync::Arc;
-use embassy_executor::task;
 use embassy_time::{Duration, Instant, Ticker, Timer};
-// use embassy_usb::{
-//     class::uac1::{self, source::AudioSourceEpIn},
-//     driver::EndpointError,
-// };
+
 use esp_hal::{interrupt::software::SoftwareInterrupt, peripherals::CPU_CTRL};
 use esp_println::println;
 use esp_rtos::embassy::Executor;
 use keyboard_protocol::StandardKey;
 use static_cell::StaticCell;
 use synth::{
-    Sample, Synth,
+    Parameters, Sample, Synth,
     note::{self, Note},
     wavetable::Wavetable,
 };
@@ -22,7 +15,12 @@ use usbd_audio::AudioClass;
 
 use crate::{
     concurrency::try_receive_all,
-    input::{self, event::KeyEvent},
+    gui,
+    input::{
+        self,
+        encoder::{self, STEP},
+        event::KeyEvent,
+    },
     usb::{self},
 };
 
@@ -32,8 +30,60 @@ pub const WAVETABLE_SIZE: usize = 2048;
 const BASE_NOTE: Note = Note::C3;
 
 pub enum Event {
-    Input(input::event::Event),
+    Note {
+        note: Note,
+        is_pressed: bool,
+    },
+    PanelUpdate {
+        direction: encoder::Direction,
+        panel: encoder::Panel,
+        id: encoder::PanelId,
+    },
+    VoiceGainUpdate {
+        direction: encoder::Direction,
+    },
 }
+
+impl Event {
+    pub fn from_event(panel: encoder::Panel, event: input::event::Event) -> Option<Event> {
+        match event {
+            input::event::Event::Key { event, .. } => Event::from_key_event(event),
+            input::event::Event::Encoder { id, direction } => match id {
+                encoder::Id::Primary => Some(Event::VoiceGainUpdate { direction }),
+                encoder::Id::Panel(panel_id) => Some(Event::PanelUpdate {
+                    direction,
+                    panel,
+                    id: panel_id,
+                }),
+            },
+        }
+    }
+
+    fn from_key_event(event: KeyEvent) -> Option<Event> {
+        match event {
+            KeyEvent::Pressed(keyboard_protocol::Key::Standard(key)) => {
+                let note = note_from_key(key)?;
+                Some(Event::Note {
+                    note,
+                    is_pressed: true,
+                })
+            }
+
+            KeyEvent::Released(keyboard_protocol::Key::Standard(key)) => {
+                let note = note_from_key(key)?;
+                Some(Event::Note {
+                    note,
+                    is_pressed: false,
+                })
+            }
+
+            _ => None,
+        }
+    }
+}
+
+const KEYBOARD: synth::keyboard::Keyboard =
+    synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
 
 fn synth_key_from_keyboard_key(
     key: keyboard_protocol::StandardKey,
@@ -94,75 +144,15 @@ fn synth_key_from_keyboard_key(
     Some(synth::keyboard::Key::new(row, column))
 }
 
-fn note_from_key(
-    keyboard: &synth::keyboard::Keyboard,
-    key: keyboard_protocol::StandardKey,
-) -> Option<Note> {
+fn note_from_key(key: keyboard_protocol::StandardKey) -> Option<Note> {
     let synth_key = synth_key_from_keyboard_key(key)?;
-    keyboard.note_of(synth_key, BASE_NOTE)
+    KEYBOARD.note_of(synth_key, BASE_NOTE)
 }
-
-fn note_from_input_event(
-    keyboard: &synth::keyboard::Keyboard,
-    event: input::event::Event,
-) -> Option<(Note, bool)> {
-    match event {
-        input::event::Event::Key {
-            event: key_event, ..
-        } => match key_event {
-            KeyEvent::Pressed(keyboard_protocol::Key::Standard(key)) => {
-                let note = note_from_key(keyboard, key)?;
-                Some((note, true))
-            }
-
-            KeyEvent::Released(keyboard_protocol::Key::Standard(key)) => {
-                let note = note_from_key(keyboard, key)?;
-                Some((note, false))
-            }
-
-            _ => None,
-        },
-    }
-}
-
-/// Asynchronously writes a USB audio packet to the provided audio endpoint, waiting if it isn't enabled.
-// async fn write_audio_packet(
-//     endpoint: &mut uac1::source::AudioSourceEpIn<'static, usb::Bus>,
-//     packet: &AudioPacket,
-// ) {
-//     // println!("synth Waiting for enable");
-//     endpoint.wait_enabled().await;
-
-//     loop {
-//         // We don't particularly care if there's an error, since we'll write the next sample soon enough anyway.
-//         // In debug mode, we'll log it.
-//         match endpoint
-//             .write_as_chunks(bytemuck::cast_slice(packet), true)
-//             .await
-//         {
-//             Ok(_) => {
-//                 break;
-//                 // println!("Synth AA")
-//             }
-//             Err(error) => {
-//                 match error {
-//                     EndpointError::BufferOverflow => {
-//                         println!("Warning: USB audio buffer overflow!");
-//                     }
-//                     EndpointError::Disabled => {
-//                         println!("Warning: USB audio buffer disabled!")
-//                     }
-//                 }
-//                 Timer::after_micros(100).await;
-//             }
-//         }
-//     }
-// }
 
 pub struct State {
     synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE>,
-    keyboard: synth::keyboard::Keyboard,
 }
+
 impl State {
     pub fn new() -> State {
         let default_wavetable = Wavetable::from_fn(libm::sinf);
@@ -170,11 +160,10 @@ impl State {
         let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> = Synth::new(
             SAMPLE_RATE as f32,
             [default_wavetable.clone(), default_wavetable],
+            Parameters::default(),
         );
 
-        let keyboard = synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
-
-        State { synth, keyboard }
+        State { synth }
     }
 
     pub fn sample(&mut self) -> AudioPacket {
@@ -189,21 +178,76 @@ impl State {
 
     pub fn apply_event(&mut self, event: Event) {
         match event {
-            Event::Input(input) => {
-                if let Some((note, is_pressed)) = note_from_input_event(&self.keyboard, input) {
-                    // We discard the error as we don't really care if there aren't any free voices.
-                    // The note just won't play.
-                    let _ = if is_pressed {
-                        let note_event = synth::note::Event {
-                            note,
-                            timestamp: Instant::now().as_micros(),
-                        };
-
-                        self.synth.note_on(note_event)
-                    } else {
-                        self.synth.note_off(note)
+            Event::Note { note, is_pressed } => {
+                // We discard the error as we don't really care if there aren't any free voices.
+                // The note just won't play.
+                let _ = if is_pressed {
+                    let note_event = synth::note::Event {
+                        note,
+                        timestamp: Instant::now().as_micros(),
                     };
-                }
+
+                    self.synth.note_on(note_event)
+                } else {
+                    self.synth.note_off(note)
+                };
+            }
+            Event::PanelUpdate {
+                direction,
+                panel,
+                id,
+            } => {
+                match panel {
+                    encoder::Panel::CutoffResonance => match id {
+                        encoder::PanelId::One => {
+                            self.synth.parameters.cutoff = (self.synth.parameters.cutoff
+                                + STEP * f32::from(direction))
+                            .clamp(0.0, 1.0);
+                        }
+                        encoder::PanelId::Two => {
+                            self.synth.parameters.resonance = (self.synth.parameters.resonance
+                                + STEP * f32::from(direction))
+                            .clamp(0.0, 1.0);
+                        }
+                    },
+                    encoder::Panel::AttackDecay => match id {
+                        encoder::PanelId::One => {
+                            self.synth.parameters.envelope.attack =
+                                (self.synth.parameters.envelope.attack
+                                    + STEP * f32::from(direction))
+                                .clamp(0.0, 1.0);
+                        }
+                        encoder::PanelId::Two => {
+                            self.synth.parameters.envelope.decay =
+                                (self.synth.parameters.envelope.decay
+                                    + STEP * f32::from(direction))
+                                .clamp(0.0, 1.0);
+                        }
+                    },
+                    encoder::Panel::SustainRelease => match id {
+                        encoder::PanelId::One => {
+                            self.synth.parameters.envelope.sustain =
+                                (self.synth.parameters.envelope.sustain
+                                    + STEP * f32::from(direction))
+                                .clamp(0.0, 1.0);
+                        }
+                        encoder::PanelId::Two => {
+                            self.synth.parameters.envelope.release =
+                                (self.synth.parameters.envelope.release
+                                    + STEP * f32::from(direction))
+                                .clamp(0.0, 1.0);
+                        }
+                    },
+                };
+
+                let _ = gui::set_synth_parameters(self.synth.parameters);
+            }
+            Event::VoiceGainUpdate { direction } => {
+                self.synth.parameters.voice_gain = (self.synth.parameters.voice_gain
+                    + STEP * f32::from(direction))
+                .clamp(0.0, 1.0);
+
+                let _ = gui::set_synth_parameters(self.synth.parameters);
             }
         }
     }

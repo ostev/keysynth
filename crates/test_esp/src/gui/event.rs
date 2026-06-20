@@ -22,28 +22,30 @@ pub(super) fn handler<Msg: Into<gui::Msg>>(
             },
             _ => None,
         },
+        Event::Encoder { id, direction } => None,
     }
 }
 
-pub(super) fn handler_lazy<Msg: Into<gui::Msg>>(
-    event: Event,
-    down: impl FnOnce() -> Msg,
-    up: impl FnOnce() -> Msg,
-    enter: impl FnOnce() -> Msg,
-    none: impl FnOnce() -> Msg,
-) -> Msg {
-    match event {
-        Event::Key { event, .. } => match event {
-            KeyEvent::Pressed(Key::Standard(key)) => match key {
-                StandardKey::Down => down(),
-                StandardKey::Up => up(),
-                StandardKey::Enter => enter(),
-                _ => none(),
-            },
-            _ => none(),
-        },
-    }
-}
+// pub(super) fn handler_lazy<Msg: Into<gui::Msg>>(
+//     event: Event,
+//     down: impl FnOnce() -> Msg,
+//     up: impl FnOnce() -> Msg,
+//     enter: impl FnOnce() -> Msg,
+//     none: impl FnOnce() -> Msg,
+// ) -> Msg {
+//     match event {
+//         Event::Key { event, .. } => match event {
+//             KeyEvent::Pressed(Key::Standard(key)) => match key {
+//                 StandardKey::Down => down(),
+//                 StandardKey::Up => up(),
+//                 StandardKey::Enter => enter(),
+//                 _ => none(),
+//             },
+//             _ => none(),
+//         },
+//         _ => None,
+//     }
+// }
 
 pub(super) fn on_keydown<Msg: Into<gui::Msg>>(
     unmodified: impl Fn(Key) -> Option<Msg>,
@@ -62,5 +64,6 @@ pub(super) fn on_keydown<Msg: Into<gui::Msg>>(
             }
             KeyEvent::Released(_) => None,
         },
+        Event::Encoder { id, direction } => None,
     }
 }

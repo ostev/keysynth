@@ -2,13 +2,13 @@ use core::f32;
 
 use embedded_graphics::{
     geometry::{Angle, Point},
-    mono_font::{MonoTextStyle, ascii},
+    mono_font::{MonoFont, MonoTextStyle, ascii},
     primitives::{Circle, PrimitiveStyle, Sector, StyledDrawable},
 };
 use embedded_gui::{
     component::Component,
     layout::{Direction, IntrinsicSize, Sizing},
-    primitive::{Primitive, text::Text},
+    primitive::{Primitive, spacer::Spacer, text::Text},
     signal::{Reactive, Signal, SignalRef},
     size::Size,
 };
@@ -39,21 +39,21 @@ impl Primitive<display::Driver> for Dial {
         &self,
         target: &mut embedded_gui::draw::LocalTarget<display::Driver>,
     ) -> Result<(), <display::Driver as embedded_graphics::prelude::DrawTarget>::Error> {
-        let outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
-        let fill_style = PrimitiveStyle::with_fill(*self.color);
+        // let outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
+        // let fill_style = PrimitiveStyle::with_fill(*self.color);
 
-        let outline = Circle::new(Point::zero(), RADIUS as u32 * 2);
+        // let outline = Circle::new(Point::zero(), RADIUS as u32 * 2);
 
-        // Draw the outline ring
-        outline.draw_styled(&outline_style, target)?;
+        // // Draw the outline ring
+        // outline.draw_styled(&outline_style, target)?;
 
-        // Draw the fill sector
-        Sector::from_circle(
-            outline,
-            Angle::zero(),
-            Angle::from_radians(*self.progress * 2.0 * f32::consts::PI),
-        )
-        .draw_styled(&fill_style, target)?;
+        // // Draw the fill sector
+        // Sector::from_circle(
+        //     outline,
+        //     Angle::zero(),
+        //     Angle::from_radians(*self.progress * 2.0 * f32::consts::PI),
+        // )
+        // .draw_styled(&fill_style, target)?;
 
         Ok(())
     }
@@ -67,20 +67,27 @@ pub fn decrease(value: f32, steps: usize) -> f32 {
     (value - (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
 }
 
-#[derive(Reactive)]
-pub struct Control<'a> {
+#[derive(Reactive, Clone)]
+pub struct ControlInfo {
     pub progress: Signal<f32>,
-    pub color: Signal<display::Color>,
-    pub label: SignalRef<'a, &'static str>,
-
-    pub on_increment: Signal<home::Msg>,
-    pub on_decrement: Signal<home::Msg>,
-    pub focus_key: Signal<home::FocusKey>,
+    pub label: SignalRef<'static, &'static str>,
 }
 
-impl<'a> IntrinsicSize for Control<'a> {
+#[derive(Reactive)]
+pub struct Control {
+    pub color: Signal<display::Color>,
+
+    pub info: ControlInfo,
+}
+
+const FONT: MonoFont = ascii::FONT_10X20;
+
+impl IntrinsicSize for Control {
     fn intrinsic_size(&self) -> Size {
-        todo!()
+        Size::new(
+            RADIUS * 2,
+            RADIUS * 2 + FONT.character_size.height as u16 + 10,
+        )
     }
 }
 
@@ -93,7 +100,7 @@ impl<'a>
         gui::FocusKey,
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
-    > for Control<'a>
+    > for Control
 {
     fn view(
         &self,
@@ -118,38 +125,113 @@ impl<'a>
     > {
         v.view(
             Direction::Vertical,
-            [v.interactive(
-                *self.focus_key,
-                event::on_keydown::<home::Msg>(|key| None, |_| None),
-                |_| {
-                    v.group(
-                        Direction::Vertical,
-                        [
-                            v.primitive(
-                                Sizing::Intrinsic,
-                                Dial {
-                                    progress: self.progress.clone(),
-                                    color: self.color.clone(),
-                                },
-                            ),
-                            // Label centered below the dial
-                            v.centered(
-                                Direction::Horizontal,
-                                v.primitive(
-                                    Sizing::Intrinsic,
-                                    Text {
-                                        content: self.label.clone(),
-                                        font_style: Signal::constant(MonoTextStyle::new(
-                                            &ascii::FONT_10X20,
-                                            colors::TEXT,
-                                        )),
-                                    },
-                                ),
-                            ),
-                        ],
-                    )
-                },
+            [v.group(
+                Direction::Vertical,
+                [
+                    v.primitive(
+                        Sizing::Intrinsic,
+                        Dial {
+                            progress: self.info.progress,
+                            color: self.color.clone(),
+                        },
+                    ),
+                    // Label centered below the dial
+                    v.centered(
+                        Direction::Horizontal,
+                        v.primitive(
+                            Sizing::Intrinsic,
+                            Text {
+                                content: self.info.label.clone(),
+                                font_style: Signal::constant(MonoTextStyle::new(
+                                    &FONT,
+                                    colors::TEXT,
+                                )),
+                            },
+                        ),
+                    ),
+                ],
             )],
+        )
+    }
+}
+
+#[derive(Reactive)]
+pub struct Panel {
+    pub info_1: ControlInfo,
+    pub info_2: ControlInfo,
+
+    pub color: Signal<display::Color>,
+}
+
+const MARGIN: u16 = 20;
+
+impl IntrinsicSize for Panel {
+    fn intrinsic_size(&self) -> Size {
+        Size::new(
+            RADIUS * 2 * 2 + MARGIN,
+            RADIUS * 2 + FONT.character_size.height as u16 + 10,
+        )
+    }
+}
+
+impl<'a>
+    Component<
+        'a,
+        display::Driver,
+        Event,
+        gui::Msg,
+        gui::FocusKey,
+        gui::AnyComponent<'a>,
+        gui::AnyPrimitive<'a>,
+    > for Panel
+{
+    fn view(
+        &self,
+        v: &'a embedded_gui::view::Factory<Event, gui::Msg, gui::FocusKey>,
+        _: embedded_gui::view::Children<
+            'a,
+            display::Driver,
+            Event,
+            gui::Msg,
+            gui::FocusKey,
+            gui::AnyComponent<'a>,
+            gui::AnyPrimitive<'a>,
+        >,
+    ) -> embedded_gui::view::View<
+        'a,
+        display::Driver,
+        Event,
+        gui::Msg,
+        gui::FocusKey,
+        gui::AnyComponent<'a>,
+        gui::AnyPrimitive<'a>,
+    > {
+        v.view(
+            Direction::Horizontal,
+            [
+                v.component(
+                    Sizing::Intrinsic,
+                    Control {
+                        info: self.info_1.clone(),
+                        color: self.color.clone(),
+                    },
+                    [],
+                ),
+                v.primitive(
+                    Sizing::Intrinsic,
+                    Spacer {
+                        size: Signal::constant(Size::new(MARGIN, 0)),
+                    },
+                ),
+                v.component(
+                    Sizing::Intrinsic,
+                    Control {
+                        info: self.info_2.clone(),
+                        color: self.color.clone(),
+                    },
+                    [],
+                ),
+            ],
         )
     }
 }

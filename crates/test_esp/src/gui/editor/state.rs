@@ -315,101 +315,106 @@ pub enum Msg {
 
 impl Msg {
     pub fn from_event(event: Event) -> Option<Msg> {
-        let Event::Key { event, keyboard } = event;
-        let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
-            | keyboard.modifier_bitfield.contains(Modifier::RightShift);
-        let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
-            | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
+        match event {
+            Event::Key { event, keyboard } => {
+                let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
+                    | keyboard.modifier_bitfield.contains(Modifier::RightShift);
+                let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
+                    | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
 
-        let msg = match event {
-            KeyEvent::Pressed(key) => match key {
-                Key::Standard(standard) => {
-                    match standard {
-                        // Selection
-                        StandardKey::Left if is_shift => {
-                            if is_super {
-                                Msg::JumpSelection(Direction::Left)
-                            } else {
-                                Msg::MoveSelection(Direction::Left)
+                let msg = match event {
+                    KeyEvent::Pressed(key) => match key {
+                        Key::Standard(standard) => {
+                            match standard {
+                                // Selection
+                                StandardKey::Left if is_shift => {
+                                    if is_super {
+                                        Msg::JumpSelection(Direction::Left)
+                                    } else {
+                                        Msg::MoveSelection(Direction::Left)
+                                    }
+                                }
+                                StandardKey::Right if is_shift => {
+                                    if is_super {
+                                        Msg::JumpSelection(Direction::Right)
+                                    } else {
+                                        Msg::MoveSelection(Direction::Right)
+                                    }
+                                }
+                                StandardKey::Up if is_shift => {
+                                    if is_super {
+                                        Msg::JumpSelection(Direction::Up)
+                                    } else {
+                                        Msg::MoveSelection(Direction::Up)
+                                    }
+                                }
+                                StandardKey::Down if is_shift => {
+                                    if is_super {
+                                        Msg::JumpSelection(Direction::Down)
+                                    } else {
+                                        Msg::MoveSelection(Direction::Down)
+                                    }
+                                }
+
+                                StandardKey::A if is_super => {
+                                    if is_shift {
+                                        Msg::SelectLine
+                                    } else {
+                                        Msg::SelectAll
+                                    }
+                                }
+
+                                // Jump cursor
+                                StandardKey::Left if is_super => Msg::JumpInsert(Direction::Left),
+                                StandardKey::Right if is_super => Msg::JumpInsert(Direction::Right),
+                                StandardKey::Down if is_super => Msg::JumpInsert(Direction::Down),
+                                StandardKey::Up if is_super => Msg::JumpInsert(Direction::Up),
+
+                                // Move cursor
+                                StandardKey::Left => Msg::MoveInsert(Direction::Left),
+                                StandardKey::Right => Msg::MoveInsert(Direction::Right),
+                                StandardKey::Down => Msg::MoveInsert(Direction::Down),
+                                StandardKey::Up => Msg::MoveInsert(Direction::Up),
+
+                                // Clipboard
+                                StandardKey::C if is_super => Msg::Copy,
+                                StandardKey::X if is_super => Msg::Cut,
+                                StandardKey::V if is_super => Msg::Paste,
+
+                                // History
+                                StandardKey::Z if is_super => {
+                                    if is_shift {
+                                        Msg::Redo
+                                    } else {
+                                        Msg::Undo
+                                    }
+                                }
+
+                                _ => {
+                                    let to_char = if is_shift {
+                                        StandardKey::to_char_upper
+                                    } else {
+                                        StandardKey::to_char_lower
+                                    };
+
+                                    if let Some(character) = to_char(standard) {
+                                        Msg::Insert(character)
+                                    } else {
+                                        return None;
+                                    }
+                                }
                             }
                         }
-                        StandardKey::Right if is_shift => {
-                            if is_super {
-                                Msg::JumpSelection(Direction::Right)
-                            } else {
-                                Msg::MoveSelection(Direction::Right)
-                            }
-                        }
-                        StandardKey::Up if is_shift => {
-                            if is_super {
-                                Msg::JumpSelection(Direction::Up)
-                            } else {
-                                Msg::MoveSelection(Direction::Up)
-                            }
-                        }
-                        StandardKey::Down if is_shift => {
-                            if is_super {
-                                Msg::JumpSelection(Direction::Down)
-                            } else {
-                                Msg::MoveSelection(Direction::Down)
-                            }
-                        }
+                        Key::Modifier(_) => return None,
+                        Key::Special(_) => return None,
+                    },
+                    KeyEvent::Released(_) => return None,
+                };
 
-                        StandardKey::A if is_super => {
-                            if is_shift {
-                                Msg::SelectLine
-                            } else {
-                                Msg::SelectAll
-                            }
-                        }
+                Some(msg)
+            }
 
-                        // Jump cursor
-                        StandardKey::Left if is_super => Msg::JumpInsert(Direction::Left),
-                        StandardKey::Right if is_super => Msg::JumpInsert(Direction::Right),
-                        StandardKey::Down if is_super => Msg::JumpInsert(Direction::Down),
-                        StandardKey::Up if is_super => Msg::JumpInsert(Direction::Up),
-
-                        // Move cursor
-                        StandardKey::Left => Msg::MoveInsert(Direction::Left),
-                        StandardKey::Right => Msg::MoveInsert(Direction::Right),
-                        StandardKey::Down => Msg::MoveInsert(Direction::Down),
-                        StandardKey::Up => Msg::MoveInsert(Direction::Up),
-
-                        // Clipboard
-                        StandardKey::C if is_super => Msg::Copy,
-                        StandardKey::X if is_super => Msg::Cut,
-                        StandardKey::V if is_super => Msg::Paste,
-
-                        // History
-                        StandardKey::Z if is_super => {
-                            if is_shift {
-                                Msg::Redo
-                            } else {
-                                Msg::Undo
-                            }
-                        }
-
-                        _ => {
-                            let to_char = if is_shift {
-                                StandardKey::to_char_upper
-                            } else {
-                                StandardKey::to_char_lower
-                            };
-
-                            if let Some(character) = to_char(standard) {
-                                Msg::Insert(character)
-                            } else {
-                                return None;
-                            }
-                        }
-                    }
-                }
-                Key::Modifier(_) => return None,
-                Key::Special(_) => return None,
-            },
-            KeyEvent::Released(_) => return None,
-        };
-
-        Some(msg)
+            _ => None,
+        }
     }
 }

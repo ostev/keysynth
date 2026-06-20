@@ -2,14 +2,14 @@ use circular_buffer::CircularBuffer;
 use embassy_executor::task;
 use esp_hal::{Async, Blocking, uart::UartRx};
 use esp_println::println;
-use keyboard_protocol::KeyboardStatus;
+use keyboard_protocol::{KeyboardStatus, KeyboardWithEncoderStatus};
 
 mod channel {
-    use keyboard_protocol::KeyboardStatus;
+    use keyboard_protocol::{KeyboardStatus, KeyboardWithEncoderStatus};
 
     use crate::channel;
 
-    channel! { KeyboardStatus }
+    channel! { KeyboardWithEncoderStatus }
 }
 
 pub use channel::receiver;
@@ -20,7 +20,7 @@ pub struct KeyboardHardware {
 
 #[task]
 pub async fn keyboard_interface(hardware: KeyboardHardware) -> ! {
-    const STATUS_SIZE: usize = core::mem::size_of::<KeyboardStatus>();
+    const STATUS_SIZE: usize = core::mem::size_of::<KeyboardWithEncoderStatus>();
 
     let sender = channel::sender();
     let mut uart = hardware.uart.into_async();
@@ -28,25 +28,18 @@ pub async fn keyboard_interface(hardware: KeyboardHardware) -> ! {
     let mut buffer = CircularBuffer::<{ STATUS_SIZE + 2 }, u8>::new();
 
     loop {
-        // println!("Start uart loop!");
         let mut receive_data = [0; STATUS_SIZE + 2];
-
-        // println!("Wait for receive uart");
 
         match uart.read_async(&mut receive_data).await {
             Ok(length) => {
                 buffer.extend_from_slice(&receive_data[0..length]);
             }
             Err(error) => {
-                println!("Warning: key receive error! {}", error)
+                println!("Warning: error receiving data from RP2040! {}", error)
             }
         }
-        // println!("receive uart!");
-        // println!("buffer: {:?}", buffer);
 
         if buffer.len() >= STATUS_SIZE + 2 {
-            // println!("Greater than!");
-            // for (start_index, start_byte) in buffer.iter().enumerate() {
             if buffer[0] == keyboard_protocol::uart::START_BYTE
                 && buffer[STATUS_SIZE + 1] == keyboard_protocol::uart::END_BYTE
             {
@@ -56,19 +49,16 @@ pub async fn keyboard_interface(hardware: KeyboardHardware) -> ! {
                     serialized[index] = *byte;
                 }
 
-                match postcard::from_bytes::<KeyboardStatus>(&serialized) {
+                match postcard::from_bytes::<KeyboardWithEncoderStatus>(&serialized) {
                     Ok(status) => sender.send(status).await,
                     Err(err) => {
-                        // println!(
-                        //     "Warning: failed to decode keyboard status (the array of bytes {:?}) from RP2040, with the following error: {:?}.",
-                        //     receive_data, err
-                        // )
+                        println!(
+                            "Warning: failed to decode keyboard status (the array of bytes {:?}) from RP2040, with the following error: {:?}.",
+                            receive_data, err
+                        )
                     }
                 };
             }
-            // }
         }
-
-        // println!("End uart loop!");
     }
 }

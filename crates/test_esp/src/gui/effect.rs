@@ -1,12 +1,23 @@
+use core::sync::atomic::Ordering;
+
+use atomic::Atomic;
+
 use crate::{
     gui::{
         Msg,
         editor::{self, MAX_SIZE, source::Source},
         select_file,
     },
+    input::encoder,
     storage::{self, Files, LoadError, Storage, key_from_name},
     text::{ByteString, Name},
 };
+
+static PANEL: Atomic<encoder::Panel> = Atomic::new(encoder::Panel::CutoffResonance);
+
+pub fn current_panel() -> encoder::Panel {
+    PANEL.load(Ordering::Relaxed)
+}
 
 pub(super) enum Effect {
     Save(Name, [u8; editor::MAX_SIZE]),
@@ -14,6 +25,7 @@ pub(super) enum Effect {
     Delete(Name),
     Rename { old: Name, new: Name },
     FetchFiles,
+    SetPanel(encoder::Panel),
 }
 
 pub(super) struct Context {
@@ -84,8 +96,8 @@ impl embedded_gui::effect::Effect for Effect {
     type Msg = Msg;
     type Context = Context;
 
-    async fn run(self, context: &mut Context) -> Msg {
-        match self {
+    async fn run(self, context: &mut Context) -> Option<Msg> {
+        let msg = match self {
             Effect::Save(name, bytes) => Msg::SaveCompleted(context.save(name, bytes).await),
             Effect::Load(name) => Msg::LoadCompleted(context.load(name).await),
             Effect::Delete(name) => Msg::DeleteCompleted(context.delete(&name).await),
@@ -100,6 +112,12 @@ impl embedded_gui::effect::Effect for Effect {
                         Files::deserialize(&serialized).map_err(LoadError::Serialization)
                     }),
             )),
-        }
+
+            Effect::SetPanel(panel) => {
+                PANEL.store(panel, Ordering::Relaxed);
+                return None;
+            }
+        };
+        Some(msg)
     }
 }

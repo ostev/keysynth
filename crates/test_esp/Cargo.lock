@@ -54,6 +54,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89cbf775b137e9b968e67227ef7f775587cde3fd31b0d8599dbd0f598a48340"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "atomic-polyfill"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2128,6 +2137,7 @@ name = "test_esp"
 version = "0.1.0"
 dependencies = [
  "archery",
+ "atomic",
  "bumpalo",
  "bytemuck",
  "calc",

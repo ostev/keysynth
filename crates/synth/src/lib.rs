@@ -29,12 +29,33 @@ pub struct Synth<const N: usize, const S: usize> {
     vcf: Vcf,
     sample_rate: f32,
 
-    cutoff: f32,
-    resonance: f32,
+    pub parameters: Parameters,
+}
 
-    voice_gain: f32,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Parameters {
+    pub cutoff: f32,
+    pub resonance: f32,
 
-    envelope: Envelope,
+    pub voice_gain: f32,
+
+    pub envelope: Envelope,
+}
+
+impl Default for Parameters {
+    fn default() -> Self {
+        Self {
+            cutoff: 0.8,
+            resonance: 0.1,
+            voice_gain: 1.0,
+            envelope: Envelope {
+                attack: 0.3,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.9,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -46,21 +67,17 @@ pub enum PlayError {
 pub type Sample = i16;
 
 impl<const N: usize, const S: usize> Synth<N, S> {
-    pub const fn new(sample_rate: f32, wavetables: [Wavetable<S>; 2]) -> Self {
+    pub const fn new(
+        sample_rate: f32,
+        wavetables: [Wavetable<S>; 2],
+        parameters: Parameters,
+    ) -> Self {
         Self {
             wavetables,
             voices: [const { None }; N],
             vcf: Vcf::new(),
             sample_rate,
-            cutoff: 0.8,
-            resonance: 0.1,
-            voice_gain: 1.0 / (N as f32),
-            envelope: Envelope {
-                attack: 0.3,
-                decay: 0.3,
-                sustain: 1.0,
-                release: 0.9,
-            },
+            parameters,
         }
     }
 
@@ -89,7 +106,8 @@ impl<const N: usize, const S: usize> Synth<N, S> {
                     WavetableOscillator::new(self.sample_rate),
                     WavetableOscillator::new(self.sample_rate),
                     note,
-                    self.envelope,
+                    self.parameters.voice_gain,
+                    self.parameters.envelope,
                 ));
 
                 Ok(())
@@ -174,9 +192,8 @@ impl<const N: usize, const S: usize> Synth<N, S> {
             *sample = Synth::<N, S>::sample_voices(
                 &mut self.vcf,
                 &self.wavetables,
-                self.voice_gain,
-                self.cutoff,
-                self.resonance,
+                self.parameters.cutoff,
+                self.parameters.resonance,
                 voices.iter_mut().map(|voice| {
                     let dereferenced_voice: &mut Voice<S> = *voice;
                     dereferenced_voice
@@ -188,14 +205,13 @@ impl<const N: usize, const S: usize> Synth<N, S> {
     fn sample_voices<'a>(
         vcf: &mut Vcf,
         wavetables: &[Wavetable<S>; 2],
-        voice_gain: f32,
         cutoff: f32,
         resonance: f32,
         voices: impl IntoIterator<Item = &'a mut Voice<S>>,
     ) -> Sample {
         let voice_output = voices
             .into_iter()
-            .map(|voice| voice.sample(wavetables, 0.0) * voice_gain)
+            .map(|voice| voice.sample(wavetables, 0.0))
             .sum();
 
         let with_vcf = vcf.sample(voice_output, cutoff, resonance).clamp(-1.0, 1.0);

@@ -37,6 +37,9 @@ rp-pac = { version = "7.0.0", features = ["cortex-m-rt", "rp2040"] }
 heapless = "0.9.3"
 modular-bitfield = "0.13.1"
 enumflags2 = { version = "0.7.12", features = ["serde"] }
+rotary-encoder-hal = { version = "0.6.0", features = ["defmt"] }
+embedded-hal = "1.0.0"
+either = { version = "1.16.0", default-features = false }
 
 
 [profile.dev]

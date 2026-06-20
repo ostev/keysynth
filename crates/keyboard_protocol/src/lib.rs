@@ -4,10 +4,16 @@ use defmt::Format;
 use enumflags2::{BitFlags, bitflags, make_bitflags};
 use serde::{Deserialize, Serialize};
 
+pub mod encoder;
 pub mod layout;
 pub mod uart;
 
-#[repr(C)]
+#[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Debug)]
+pub struct KeyboardWithEncoderStatus {
+    pub keyboard: KeyboardStatus,
+    pub encoder: encoder::Update,
+}
+
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Debug)]
 pub struct KeyboardStatus {
     pub keys: [StandardKey; 6],
@@ -212,6 +218,14 @@ pub enum StandardKey {
 }
 
 impl StandardKey {
+    #[inline]
+    pub fn is_arrow(self) -> bool {
+        matches!(
+            self,
+            StandardKey::Right | StandardKey::Left | StandardKey::Down | StandardKey::Up
+        )
+    }
+
     pub fn to_char_lower(self) -> Option<u8> {
         match self {
             StandardKey::A => Some(b'a'),
@@ -337,6 +351,17 @@ pub enum Key {
     Special(SpecialKey),
     Modifier(Modifier),
 }
+
+impl Key {
+    #[inline]
+    pub fn is_arrow(self) -> bool {
+        match self {
+            Key::Standard(standard_key) => standard_key.is_arrow(),
+            _ => false,
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! standard {
     ($name:ident) => {

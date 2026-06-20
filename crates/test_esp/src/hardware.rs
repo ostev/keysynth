@@ -19,7 +19,7 @@ use esp_hal::{
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     otg_fs::{Usb, UsbBus},
     pcnt::Pcnt,
-    peripherals::{CPU_CTRL, GPIO4, GPIO19, GPIO20, PSRAM, Peripherals, TIMG0},
+    peripherals::{CPU_CTRL, GPIO4, GPIO7, GPIO8, GPIO19, GPIO20, PSRAM, Peripherals, TIMG0},
     psram::{FlashFreq, Psram, PsramConfig, SpiRamFreq},
     ram,
     spi::{self, master::Spi},
@@ -28,6 +28,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
     uart::{self, Uart, UartRx},
 };
+use esp_println::println;
 use esp_storage::FlashStorage;
 use keyboard_protocol::uart::BAUDRATE;
 use st7789v2::{ResetInterface, St7789v2};
@@ -39,10 +40,7 @@ use crate::{
         self, colors,
         display::{self, DisplayHardware},
     },
-    input::{
-        encoder::{self, EncoderHardware},
-        keyboard::KeyboardHardware,
-    },
+    input::{encoder, keyboard::KeyboardHardware},
     storage::StorageHardware,
     usb,
 };
@@ -56,7 +54,7 @@ pub struct Hardware {
 
     // pub audio: AudioHardware,
     pub keyboard: KeyboardHardware,
-    pub encoder: EncoderHardware,
+    pub encoder: encoder::Hardware<GPIO8<'static>, GPIO7<'static>>,
 
     pub display: DisplayHardware,
 
@@ -99,32 +97,6 @@ impl Hardware {
 
         let cpu_control = peripherals.CPU_CTRL;
 
-        // let analog_audio = {
-        //     let i2s = I2s::new(
-        //         peripherals.I2S0,
-        //         peripherals.DMA_CH0,
-        //         i2s::master::Config::new_tdm_philips()
-        //             .with_sample_rate(Rate::from_hz(SAMPLE_RATE))
-        //             .with_data_format(i2s::master::DataFormat::Data16Channel16)
-        //             .with_channels(Channels::STEREO),
-        //     )
-        //     .map_err(InitError::I2SConfigError)?
-        //     .with_mclk(peripherals.GPIO34);
-
-        //     let (tx_buffer, tx_descriptors, _, _) = dma_buffers!(4 * 4092, 0);
-
-        //     let i2s_tx = i2s
-        //         .i2s_tx
-        //         .with_bclk(peripherals.GPIO33)
-        //         .with_dout(peripherals.GPIO47)
-        //         .with_ws(peripherals.GPIO48)
-        //         .build(tx_descriptors);
-
-        //     AnalogAudioHardware { i2s_tx, tx_buffer }
-        // };
-
-        // println!("Audio setup complete!");
-
         let keyboard = {
             let uart = UartRx::new(
                 peripherals.UART1,
@@ -136,21 +108,15 @@ impl Hardware {
             KeyboardHardware { uart }
         };
 
-        // println!("Keyboard setup complete!");
+        println!("Keyboard setup complete!");
 
         let encoder = {
-            let mut counter = Pcnt::new(peripherals.PCNT);
-
-            encoder::configure_unit(&mut counter.unit0, peripherals.GPIO8, peripherals.GPIO7);
-            // encoder::configure_unit(&mut counter.unit1, peripherals.GPIO26, peripherals.GPIO27);
-            // encoder::configure_unit(&mut counter.unit1, peripherals.GPIO28, peripherals.GPIO29);
-
-            EncoderHardware { counter }
+            encoder::Hardware {
+                counter: Pcnt::new(peripherals.PCNT),
+                a: peripherals.GPIO8,
+                b: peripherals.GPIO7,
+            }
         };
-
-        // println!("Encoder setup complete!");
-
-        // println!("USB setup complete!");
 
         let display = {
             let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32_000);
@@ -163,7 +129,7 @@ impl Hardware {
             let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
                 peripherals.SPI2,
                 spi::master::Config::default()
-                    .with_frequency(Rate::from_mhz(40))
+                    .with_frequency(Rate::from_mhz(2))
                     .with_mode(spi::Mode::_0),
             )
             .map_err(InitError::SpiConfigError)?
@@ -173,48 +139,17 @@ impl Hardware {
             .with_dma(peripherals.DMA_CH1)
             .with_buffers(dma_rx_buf, dma_tx_buf);
 
-            // let display_interface = DisplaySpiInterface::new(
-            //     spi,
-            //     Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()),
-            // );
-            // let reset_interface = DisplayResetInterface::new(Output::new(
-            //     peripherals.GPIO5,
-            //     Level::Low,
-            //     OutputConfig::default(),
-            // ));
-
             let dc_pin = Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default());
             let reset_pin = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
-
-            // let mut delay = Delay::new();
-
-            // let mut driver = St7789v2::builder(display_interface, reset_interface, display::SIZE)
-            //     .buffered::<display::Color>(st7789v2::Framebuffer::heap::<
-            //         { display::FRAMEBUFFER_SIZE },
-            //     >())
-            //     .build(st7789v2::ColorMode::Rgb565, &mut delay)
-            //     .map_err(InitError::DisplayInitError)?;
 
             display::DisplayHardware {
                 spi,
                 reset_pin,
                 dc_pin,
             }
-
-            // driver.clear_async(colors::ERROR).await;
-
-            // driver.clear_async(colors::TEXT).await;
-            // driver.clear(colors::ERROR);
-            // driver.full_flush().await;
-
-            // println!("Display setup complete!");
-
-            // driver.hard_reset().unwrap();
-            // driver.clear(gui::colors::BACKGROUND_LIGHT);
-            // driver.full_flush().await;
         };
 
-        // println!("Display setup complete!");
+        println!("Display setup complete!");
 
         let storage = StorageHardware {
             flash: FlashStorage::new(peripherals.FLASH),
@@ -227,12 +162,7 @@ impl Hardware {
         }
         .build();
 
-        // println!("Storage setup complete!");
-
-        // let debug_uart = Uart::new(peripherals.UART0, uart::Config::default())
-        //     .map_err(InitError::UartConfigError)?
-        //     .with_tx(peripherals.GPIO43)
-        //     .with_rx(peripherals.GPIO44);
+        println!("Storage setup complete!");
 
         Ok(Hardware {
             // context_switch_interrupt,

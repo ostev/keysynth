@@ -1,5 +1,6 @@
 use core::cell::OnceCell;
 
+use bytemuck::NoUninit;
 use embassy_executor::task;
 use embassy_sync::{blocking_mutex::Mutex, once_lock::OnceLock, signal::Signal};
 use esp_hal::{
@@ -15,29 +16,69 @@ use esp_hal::{
 use esp_sync::RawMutex;
 
 pub use channel::receiver;
-use static_cell::StaticCell;
-use usbd_hid::descriptor::MediaKey::Mute;
 
-pub struct EncoderHardware {
+pub const STEP: f32 = 0.01;
+
+#[derive(Clone, Copy, Debug, NoUninit, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum Panel {
+    #[default]
+    CutoffResonance,
+    AttackDecay,
+    SustainRelease,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Id {
+    Primary,
+    Panel(PanelId),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PanelId {
+    One,
+    Two,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Direction {
+    Increase,
+    Decrease,
+}
+
+impl From<Direction> for f32 {
+    fn from(direction: Direction) -> Self {
+        match direction {
+            Direction::Increase => 1.0,
+            Direction::Decrease => -1.0,
+        }
+    }
+}
+
+pub struct Hardware<A: InputPin + 'static, B: InputPin + 'static> {
     pub counter: Pcnt<'static>,
+    pub a: A,
+    pub b: B,
 }
 
 mod channel {
-    use super::EncoderStatus;
+    use super::Delta;
     use crate::channel;
 
-    channel! { EncoderStatus }
+    channel! { Delta}
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderStatus {
-    pub delta: [i32; 3],
+    pub deltas: [Delta; 3],
 }
+
+pub type Delta = i16;
 
 const THRESHOLD: i16 = 2;
 const FILTER: u16 = 10;
 
-pub fn configure_unit<'d, const N: usize>(
+fn configure_unit<'d, const N: usize>(
     unit: &mut Unit<'d, N>,
     a: impl InputPin + 'd,
     b: impl InputPin + 'd,
@@ -67,70 +108,33 @@ pub fn configure_unit<'d, const N: usize>(
     unit.listen();
 }
 
-#[handler(priority = Priority::Priority3)]
-fn interrupt_handler() {
-    // let mut u0_ref = UNIT0.borrow_ref_mut(cs);
-    // if let Some(ref mut u0) = *u0_ref {
-    //     // Check what exact event fired this interrupt vector
-    //     let events = u0.get_events();
+pub fn configure<A: InputPin + 'static, B: InputPin + 'static>(mut hardware: Hardware<A, B>) {
+    hardware.counter.set_interrupt_handler(interrupt_handler);
+    configure_unit(&mut hardware.counter.unit0, hardware.a, hardware.b);
 
-    //     if events.high_limit {
-    //         OVERFLOW_COUNT.fetch_add(1, Ordering::Relaxed);
-    //     } else if events.low_limit {
-    //         OVERFLOW_COUNT.fetch_sub(1, Ordering::Relaxed);
-    //     }
-
-    //     // CRITICAL: Clear the interrupt bit so it can fire again
-    //     u0.reset_interrupt();
-    // }
-    unsafe {
-        COUNTER.lock_mut(|counter| {
-            let counter = counter.get_mut().unwrap();
-            // let units = [counter.unit0, counter.unit1, counter.unit2];
-
-            // for unit in units {}
-        })
-    }
-}
-
-static STATE_CHANGE: Signal<RawMutex, ()> = Signal::new();
-
-static COUNTER: Mutex<RawMutex, OnceCell<Pcnt<'static>>> = Mutex::new(OnceCell::new());
-
-pub fn start(mut hardware: EncoderHardware) {
-    critical_section::with(|_| {
-        hardware.counter.set_interrupt_handler(interrupt_handler);
-
-        COUNTER.lock(|cell| {
-            cell.set(hardware.counter)
-                .unwrap_or_else(|_| panic!("The counter was already initialised!"))
-        });
+    COUNTER.lock(|cell| {
+        cell.set(hardware.counter)
+            .unwrap_or_else(|_| panic!("The counter was already initialised!"))
     });
 }
 
-// #[task]
-// pub async fn encoder(hardware: EncoderHardware) -> ! {
-//     let EncoderHardware { mut counter } = hardware;
+static COUNTER: Mutex<RawMutex, OnceCell<Pcnt<'static>>> = Mutex::new(OnceCell::new());
 
-//     counter.set_interrupt_handler(interrupt_handler);
-//     COUNTER.init(counter);
+#[handler(priority = Priority::Priority3)]
+fn interrupt_handler() {
+    let sender = channel::sender();
+    unsafe {
+        COUNTER.lock_mut(|counter| {
+            let counter = counter.get_mut().unwrap();
+            let unit = &counter.unit0;
 
-//     // let mut encoder_state = [0; 3];
+            let delta = unit.value();
+            let events = unit.events();
 
-//     loop {
-//         // STATE_CHANGE.wait().await;
-
-//         // let new_encoder_state = [
-//         //     counter.unit0.value(),
-//         //     counter.unit1.value(),
-//         //     counter.unit2.value(),
-//         // ];
-//         // let delta = core::array::from_fn(|index| {
-//         //     new_encoder_state[index] as i32 - encoder_state[index] as i32
-//         // });
-
-//         // encoder_state = new_encoder_state;
-
-//         // channel::sender().send(EncoderStatus { delta }).await;
-//     }
-// }
+            if events.low_limit | events.high_limit {
+                // If the channel's full, then we'll drop encoder ticks. This is fine.
+                let _ = sender.try_send(delta);
+            }
+        })
+    }
+}

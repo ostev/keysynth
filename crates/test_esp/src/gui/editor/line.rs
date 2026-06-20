@@ -143,41 +143,53 @@ pub enum Msg {
 
 impl Msg {
     pub fn from_event(event: Event) -> Msg {
-        let Event::Key { event, keyboard } = event;
-        let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
-            | keyboard.modifier_bitfield.contains(Modifier::RightShift);
-        let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
-            | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
-
         match event {
-            KeyEvent::Pressed(key) => match key {
-                Key::Standard(standard) => {
-                    match standard {
-                        // Jump cursor
-                        StandardKey::Left if is_super => Msg::JumpInsert(MovementDirection::Left),
-                        StandardKey::Right if is_super => Msg::JumpInsert(MovementDirection::Right),
-                        StandardKey::Down if is_super => Msg::JumpInsert(MovementDirection::Left),
-                        StandardKey::Up if is_super => Msg::JumpInsert(MovementDirection::Right),
+            Event::Key { event, keyboard } => {
+                let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
+                    | keyboard.modifier_bitfield.contains(Modifier::RightShift);
+                let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
+                    | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
 
-                        // Move cursor
-                        StandardKey::Left => Msg::MoveInsert(MovementDirection::Left),
-                        StandardKey::Right => Msg::MoveInsert(MovementDirection::Right),
-                        StandardKey::Down => Msg::MoveInsert(MovementDirection::Left),
-                        StandardKey::Up => Msg::MoveInsert(MovementDirection::Right),
+                match event {
+                    KeyEvent::Pressed(key) => match key {
+                        Key::Standard(standard) => {
+                            match standard {
+                                // Jump cursor
+                                StandardKey::Left if is_super => {
+                                    Msg::JumpInsert(MovementDirection::Left)
+                                }
+                                StandardKey::Right if is_super => {
+                                    Msg::JumpInsert(MovementDirection::Right)
+                                }
+                                StandardKey::Down if is_super => {
+                                    Msg::JumpInsert(MovementDirection::Left)
+                                }
+                                StandardKey::Up if is_super => {
+                                    Msg::JumpInsert(MovementDirection::Right)
+                                }
 
-                        _ => {
-                            if let Some(character) = standard.to_char(is_shift) {
-                                Msg::Insert(character)
-                            } else {
-                                Msg::NoOp
+                                // Move cursor
+                                StandardKey::Left => Msg::MoveInsert(MovementDirection::Left),
+                                StandardKey::Right => Msg::MoveInsert(MovementDirection::Right),
+                                StandardKey::Down => Msg::MoveInsert(MovementDirection::Left),
+                                StandardKey::Up => Msg::MoveInsert(MovementDirection::Right),
+
+                                _ => {
+                                    if let Some(character) = standard.to_char(is_shift) {
+                                        Msg::Insert(character)
+                                    } else {
+                                        Msg::NoOp
+                                    }
+                                }
                             }
                         }
-                    }
+                        Key::Modifier(_) => Msg::NoOp,
+                        Key::Special(_) => Msg::NoOp,
+                    },
+                    KeyEvent::Released(_) => Msg::NoOp,
                 }
-                Key::Modifier(_) => Msg::NoOp,
-                Key::Special(_) => Msg::NoOp,
-            },
-            KeyEvent::Released(_) => Msg::NoOp,
+            }
+            _ => Msg::NoOp,
         }
     }
 }

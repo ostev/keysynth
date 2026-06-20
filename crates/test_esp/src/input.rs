@@ -2,7 +2,7 @@ use embassy_executor::task;
 use embassy_futures::select::{Either, select};
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
 use esp_println::println;
-use keyboard_protocol::{Key, KeyboardStatus, SpecialKey, StandardKey};
+use keyboard_protocol::{Key, KeyboardStatus, KeyboardWithEncoderStatus, SpecialKey, StandardKey};
 
 use crate::{
     audio, gui,
@@ -58,6 +58,7 @@ impl State {
                     .chain(released)
                     .map(move |event| Event::Key { event, keyboard })
             }
+            InputChange::Encoder(encoder_status) => todo!(),
         }
     }
 }
@@ -68,6 +69,7 @@ fn is_toggle_mode(event: &Event) -> bool {
             KeyEvent::Pressed(Key::Special(SpecialKey::One)) => true,
             _ => false,
         },
+        _ => false,
     }
 }
 
@@ -78,7 +80,7 @@ pub async fn router() {
     let keyboard = keyboard::receiver();
     let encoder = encoder::receiver();
 
-    let gui = gui::sender();
+    let gui = gui::input_sender();
     let audio = usb::audio_sender();
 
     let mut state = State::new();
@@ -86,27 +88,35 @@ pub async fn router() {
     loop {
         let notification = select(keyboard.receive(), encoder.receive()).await;
 
-        let change = match notification {
-            Either::First(keyboard_status) => InputChange::Keyboard(keyboard_status),
-            Either::Second(encoder_status) => todo!(),
+        let changes: heapless::Vec<InputChange, 3> = match notification {
+            Either::First(KeyboardWithEncoderStatus {
+                keyboard: keyboard_status,
+                encoder: encoder_update,
+            }) => {
+                if encoder_update.is_zero() {
+                    heapless::Vec::from_array([InputChange::Keyboard(keyboard_status)])
+                } else {
+                    heapless::Vec::from_array([
+                        InputChange::Keyboard(keyboard_status),
+                        InputChange::Encoder(EncoderStatus {
+                            deltas: [0, encoder_update.deltas[0], encoder_update.deltas[1]],
+                        }),
+                    ])
+                }
+            }
+            Either::Second(delta) => {
+                heapless::Vec::from_array([InputChange::Encoder(EncoderStatus {
+                    deltas: [delta, 0, 0],
+                })])
+            }
         };
-
-        // let events = {
-        //     let mut events = heapless::Vec::<Event, 30>::new();
-        //     for event in state.apply(change) {
-        //         match events.push(event) {
-        //             Ok(_) => {}
-        //             Err(_) => break,
-        //         }
-        //     }
-        //     events
-        // };
-        let events = state.apply(change);
-        // println!("Loop!");
 
         match mode {
             KeyboardMode::Passthrough => match notification {
-                Either::First(keyboard_status) => {
+                Either::First(KeyboardWithEncoderStatus {
+                    keyboard: keyboard_status,
+                    encoder: _encoder_update,
+                }) => {
                     unsafe {
                         usb::set_keyboard_status(UsbKeyboardStatus {
                             keys: keyboard_status.keys,
@@ -114,24 +124,92 @@ pub async fn router() {
                         });
                     }
 
+                    for change in changes {
+                        let events = state.apply(change);
+
+                        for event in events {
+                            if is_toggle_mode(&event) {
+                                println!("Toggle!");
+                                mode = mode.toggle();
+                            }
+
+                            // match event {
+                            //     Event::Encoder { id, direction } => {
+                            //         // Handle volume (first encoder)
+                            //         {
+                            //             const VOLUME_STEP: i32 = 40;
+
+                            //             let key = match direction {
+                            //                 encoder::Direction::Increase => StandardKey::VolumeDown,
+                            //                 encoder::Direction::Decrease => StandardKey::VolumeUp,
+                            //             };
+
+                            //             hid.send(UsbKeyboardStatus::press(key)).await;
+                            //         }
+
+                            //         // Handle scrolling up/down (fourth encoder)
+                            //         {
+                            //             const SCROLL_STEP: i32 = 1;
+
+                            //             let steps = delta[0] / SCROLL_STEP;
+
+                            //             let key = if steps < 0 {
+                            //                 Some(StandardKey::Up)
+                            //             } else if steps > 0 {
+                            //                 Some(StandardKey::Down)
+                            //             } else {
+                            //                 None
+                            //             };
+
+                            //             if let Some(key) = key {
+                            //                 for _ in 0..(steps as u32) {
+                            //                     hid.send(UsbKeyboardStatus::press(key)).await;
+                            //                 }
+                            //             }
+                            //         }
+
+                            //         // Handle scrubbing left/right (third encoder)
+                            //         {
+                            //             const SCRUB_STEP: i32 = 4;
+
+                            //             let steps = delta[0] / SCRUB_STEP;
+
+                            //             let key = if steps < 0 {
+                            //                 Some(StandardKey::Left)
+                            //             } else if steps > 0 {
+                            //                 Some(StandardKey::Right)
+                            //             } else {
+                            //                 None
+                            //             };
+
+                            //             if let Some(key) = key {
+                            //                 for _ in 0..(steps as u32) {
+                            //                     hid.send(UsbKeyboardStatus::press(key)).await;
+                            //                 }
+                            //             }
+                            //         }
+                            //     }
+                            // }
+                        }
+                    }
+                }
+                Either::Second(_) => {}
+            },
+            KeyboardMode::Capture => {
+                for change in changes {
+                    let events = state.apply(change);
+
                     for event in events {
                         if is_toggle_mode(&event) {
                             println!("Toggle!");
                             mode = mode.toggle();
+                        } else if gui::is_capturing(&event) {
+                            gui.send(event).await;
+                        } else if let Some(audio_event) =
+                            audio::Event::from_event(gui::current_panel(), event)
+                        {
+                            audio.send(audio_event).await;
                         }
-                    }
-                }
-                Either::Second(_) => todo!(),
-            },
-            KeyboardMode::Capture => {
-                for event in events {
-                    if is_toggle_mode(&event) {
-                        println!("Toggle!");
-                        mode = mode.toggle();
-                    } else if gui::is_capturing(&event) {
-                        gui.send(event).await;
-                    } else {
-                        audio.send(audio::Event::Input(event)).await;
                     }
                 }
             }

@@ -5,6 +5,7 @@ use core::{
 
 use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
+use embassy_futures::select::{Either, select};
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
@@ -20,9 +21,10 @@ use embedded_gui::{
     primitive::{any_primitive, owned_text::OwnedText, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
 };
+use esp_println::println;
 use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
-use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus, Modifier};
+use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus, Modifier, StandardKey::P};
 use st7789v2::{DriverResult, St7789v2};
 
 mod background;
@@ -36,29 +38,53 @@ mod message;
 mod select_file;
 mod text_bar;
 
+pub use effect::current_panel;
+
 use crate::{
     concurrency::receive_all,
     gui::{
         display::DisplayHardware,
         editor::line::{self, LineEditor},
         effect::Effect,
-        home::dial::{self, Dial},
+        home::{
+            Home,
+            dial::{self, Dial},
+        },
         message::Message,
         select_file::file_list::{FileEntry, FileList},
         text_bar::TextBar,
     },
-    input::{self, event::Event},
+    input::{
+        self,
+        encoder::Panel,
+        event::{Event, KeyEvent},
+    },
     storage::{LoadError, Storage, StorageHardware},
     text::{NAME_SIZE, Name},
 };
 
-mod channel {
-    use crate::{channel, gui::event, input};
+mod input_channel {
+    use crate::{channel, input};
 
     channel!(input::event::Event);
 }
 
-pub use channel::sender;
+pub use input_channel::sender as input_sender;
+
+// mod synth_paremeters_channel {
+//     use crate::channel;
+
+//     channel!(synth::Parameters);
+// }
+
+// pub use synth_paremeters_channel::sender as synth_parameters_sender;
+
+static SYNTH_PARAMETERS: embassy_sync::signal::Signal<RawMutex, synth::Parameters> =
+    embassy_sync::signal::Signal::new();
+
+pub fn set_synth_parameters(parameters: synth::Parameters) {
+    SYNTH_PARAMETERS.signal(parameters);
+}
 
 static IS_CAPTURING_ALL_KEYBOARD_INPUT: AtomicBool = AtomicBool::new(false);
 
@@ -68,7 +94,15 @@ fn is_capturing_all_keyboard_input() -> bool {
 
 pub fn is_capturing(event: &Event) -> bool {
     match event {
-        Event::Key { keyboard, .. } => is_capturing_all_keyboard_input() || keyboard.is_super(),
+        Event::Key { keyboard, event } => {
+            keyboard.is_super()
+                || match event {
+                    KeyEvent::Pressed(key) => key.is_arrow(),
+                    KeyEvent::Released(key) => key.is_arrow(),
+                }
+                || is_capturing_all_keyboard_input()
+        }
+        Event::Encoder { .. } => false,
     }
 }
 
@@ -101,7 +135,8 @@ enum AnyComponent<'a> {
     Background(Background<display::Color>),
     FileEntry(FileEntry),
     FileList(FileList<'a>),
-    DialControl(dial::Control<'a>),
+    DialControl(dial::Control),
+    DialPanel(dial::Panel),
 }
 
 #[derive(Reactive)]
@@ -118,6 +153,7 @@ enum AnyPrimitive<'a> {
 enum Page {
     SelectFile(Source<select_file::SelectFile>),
     Editor,
+    Home(Source<home::Home>),
 }
 
 // TODO: implement derive macro for enums
@@ -126,6 +162,7 @@ impl State for Page {
         match self {
             Page::SelectFile(state) => state.mark_resolved(),
             Page::Editor => {}
+            Page::Home(state) => state.mark_resolved(),
         }
     }
 }
@@ -133,6 +170,8 @@ impl State for Page {
 #[derive(Reactive, State)]
 struct Gui {
     page: Source<Page>,
+
+    synth_parameters: Source<synth::Parameters>,
 
     editor: Source<editor::State>,
 
@@ -149,6 +188,12 @@ impl Gui {
                     .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
             ),
             Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
+            Page::Home(_) => (
+                false,
+                Change::new()
+                    .with_effect(Effect::SetPanel(Panel::default()))
+                    .with_focus_key(FocusKey::Home(home::FocusKey::default())),
+            ),
         };
 
         self.page.set(page);
@@ -172,9 +217,10 @@ impl App for Gui {
 
     fn new() -> Self {
         Self {
-            page: Source::new(Page::Editor),
+            page: Source::new(Page::Home(Source::new(Home::default()))),
             message: Source::new(None),
 
+            synth_parameters: Source::new(synth::Parameters::default()),
             editor: Source::new(editor::State::default()),
         }
     }
@@ -189,6 +235,9 @@ impl App for Gui {
 
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
         match (&mut *self.page, msg) {
+            (Page::Home(state), Msg::Home(home_msg)) => {
+                return state.update(|home| home.update(home_msg));
+            }
             (Page::Editor, Msg::Editor(editor_msg)) => {
                 return self.editor.update(|editor| editor.update(editor_msg));
             }
@@ -261,6 +310,11 @@ impl App for Gui {
             (_, Msg::ChangeFocus(focus)) => {
                 return Change::new().with_focus_key(focus);
             }
+
+            (_, Msg::SetSynthParameters(parameters)) => {
+                self.synth_parameters.set(parameters);
+            }
+
             _ => {}
         }
 
@@ -279,26 +333,44 @@ impl App for Gui {
         Self::AnyComponent<'a>,
         Self::AnyPrimitive<'a>,
     > {
-        // match &*self.page {
-        //     Page::SelectFile(state) => state.view(v),
-        //     Page::Editor => {
-        //         let editor = v.interactive(
-        //             FocusKey::Editor,
-        //             |event| editor::Msg::from_event(event).map(Msg::Editor),
-        //             |_| {
-        //                 v.component(
-        //                     Sizing::Fill,
-        //                     editor::Editor::new(self.editor.signal_ref()),
-        //                     [],
-        //                 )
-        //             },
-        //         );
+        match &*self.page {
+            // Page::Home(home) => home.view(v, self.synth_parameters.signal()),
+            Page::Home(_) => {
+                println!("Rendering home page");
 
-        //         v.view(Direction::Vertical, [editor])
-        //     }
-        // }
+                v.view(
+                    Direction::Horizontal,
+                    [v.primitive(
+                        Sizing::Fill,
+                        Text {
+                            content: SignalRef::constant(&"Home page is under construction!"),
+                            font_style: Signal::constant(
+                                MonoTextStyleBuilder::new()
+                                    .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+                                    .text_color(display::Color::WHITE)
+                                    .build(),
+                            ),
+                        },
+                    )],
+                )
+            }
+            Page::SelectFile(state) => state.view(v),
+            Page::Editor => {
+                let editor = v.interactive(
+                    FocusKey::Editor,
+                    |event| editor::Msg::from_event(event).map(Msg::Editor),
+                    |_| {
+                        v.component(
+                            Sizing::Fill,
+                            editor::Editor::new(self.editor.signal_ref()),
+                            [],
+                        )
+                    },
+                );
 
-        v.view(Direction::Horizontal, [])
+                v.view(Direction::Vertical, [editor])
+            }
+        }
     }
 }
 
@@ -311,6 +383,8 @@ enum Msg {
     DeleteCompleted(Result<(), LoadError>),
     RenameCompleted(Result<(), LoadError>),
     LoadCompleted(Result<editor::source::Source, LoadError>),
+
+    SetSynthParameters(synth::Parameters),
 
     ChangeFocus(FocusKey),
 }
@@ -342,9 +416,13 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     // display.driver.full_flush().await;
 
     let mut driver = display::Driver::init(display, display::Orientation::Vertical).await;
+    driver.clear_async(colors::ERROR).await;
+    driver.clear_async(colors::LITERAL).await;
+    driver.clear_async(colors::ERROR).await;
+    println!("Initial clear complete!");
 
-    driver.clear(Gui::background_color());
-    driver.full_flush().await;
+    // driver.clear(Gui::background_color());
+    // driver.full_flush().await;
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
@@ -355,7 +433,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, true);
     driver.full_flush().await;
 
-    let receiver = channel::receiver();
+    let input_receiver = input_channel::receiver();
 
     loop {
         // match display.driver.full_flush().await {
@@ -368,11 +446,34 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
         //     }
         // }
 
-        let events = receive_all(&receiver).await;
+        let events = select(receive_all(&input_receiver), SYNTH_PARAMETERS.wait()).await;
 
-        embedded_gui::app::dispatch(&mut gui, &mut effect_context, &mut internal_state, events)
-            .await;
+        match events {
+            Either::First(input_events) => {
+                embedded_gui::app::dispatch(
+                    &mut gui,
+                    &mut effect_context,
+                    &mut internal_state,
+                    input_events,
+                )
+                .await;
+            }
+            Either::Second(synth_parameters) => {
+                embedded_gui::app::dispatch_msg(
+                    &mut gui,
+                    &mut effect_context,
+                    &mut internal_state,
+                    Msg::SetSynthParameters(synth_parameters),
+                )
+                .await;
+            }
+        }
+        println!("Rendering...");
         let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, false);
-        driver.full_flush().await;
+        println!("Render complete!");
+        println!("Flushing display...");
+        driver.clear_async(colors::ERROR).await;
+        // driver.full_flush().await;
+        println!("Flush complete!");
     }
 }

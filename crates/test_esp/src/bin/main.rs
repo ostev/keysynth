@@ -77,8 +77,8 @@ async fn main(spawner: Spawner) {
             HIGH_PRIORITY_EXECUTOR.init_with(|| InterruptExecutor::new(hardware.interrupt_2));
         let high_priority = high_priority_executor.start(esp_hal::interrupt::Priority::Priority3);
 
-        high_priority.spawn(input::router().unwrap());
-        high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
+        // high_priority.spawn(input::router().unwrap());
+        // high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
         // high_priority.spawn(
         //     usb_device(
         //         high_priority,
@@ -88,7 +88,9 @@ async fn main(spawner: Spawner) {
         //     )
         //     .unwrap(),
         // );
-        high_priority.spawn(say_hi().unwrap());
+        // high_priority.spawn(say_hi().unwrap());
+
+        high_priority.spawn(gui::app(hardware.display, hardware.storage).unwrap());
     }
 
     {
@@ -100,8 +102,6 @@ async fn main(spawner: Spawner) {
             usb::device_loop(hardware.usb)
         });
     }
-
-    spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
 }
 
 #[task]

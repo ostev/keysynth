@@ -20,7 +20,7 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn new(offset: (u32, u32), size: (u32, u32)) -> Option<Keyboard> {
+    pub const fn new(offset: (u32, u32), size: (u32, u32)) -> Option<Keyboard> {
         if size.0 == 0 || size.1 == 0 {
             None
         } else {

@@ -11,6 +11,8 @@ pub struct Voice<const S: usize> {
     osc_b: WavetableOscillator<S>,
     note: note::Event,
 
+    gain: f32,
+
     adsr: Adsr,
 }
 
@@ -20,12 +22,14 @@ impl<const S: usize> Voice<S> {
         osc_a: WavetableOscillator<S>,
         osc_b: WavetableOscillator<S>,
         note: note::Event,
+        gain: f32,
         envelope: Envelope,
     ) -> Self {
         Self {
             osc_a,
             osc_b,
             note,
+            gain,
             adsr: Adsr::new(
                 sample_rate,
                 envelope,
@@ -53,7 +57,7 @@ impl<const S: usize> Voice<S> {
 
         let sample = a * (1.0 - blend) + b * blend;
 
-        sample * self.adsr.process()
+        sample * self.adsr.process() * self.gain
     }
 
     pub const fn release(&mut self) {
