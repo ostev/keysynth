@@ -18,7 +18,10 @@ use embedded_gui::{
 use crate::{
     gui::{
         colors, display,
-        editor::{cursor::draw_cursor, state::EditorState},
+        editor::{
+            cursor::draw_cursor,
+            state::{EditorState, LINES_VISIBLE},
+        },
     },
     text,
 };
@@ -53,7 +56,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
             .iter()
             .enumerate()
             .skip(self.state.scroll_start)
-            .take(self.state.lines_visible);
+            .take(LINES_VISIBLE);
 
         let mut y_offset = 0;
 
@@ -71,7 +74,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
                 y_offset,
             );
 
-            if let Some(selection) = self.state.selection {
+            if let Some(selection) = self.state.selection.range(self.state.cursor) {
                 let Ok(_) = selection.draw(&FONT, line_start, target);
             }
 

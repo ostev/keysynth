@@ -28,6 +28,7 @@ use embedded_gui::{
 use esp_println::println;
 use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
+use heapless::sorted_linked_list::SortedLinkedList;
 use keyboard_protocol::{
     Key, KeyboardDiff, KeyboardStatus, Modifier,
     StandardKey::{self, P},
@@ -169,6 +170,32 @@ enum Page {
     Home(home::Home),
 }
 
+impl Page {
+    fn change(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
+        let (is_capturing, change) = match &page {
+            Page::SelectFile(_) => (
+                true,
+                Change::new()
+                    .with_effect(Effect::FetchFiles)
+                    .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
+            ),
+            Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
+            Page::Home(_) => (
+                false,
+                Change::new()
+                    .with_effect(Effect::SetPanel(Panel::default()))
+                    .with_focus_key(FocusKey::Home(home::FocusKey::default())),
+            ),
+        };
+
+        *self = page;
+
+        IS_CAPTURING_ALL_KEYBOARD_INPUT.store(is_capturing, atomic::Ordering::Relaxed);
+
+        change
+    }
+}
+
 // TODO: implement derive macro for enums
 impl State for Page {
     fn mark_resolved(&mut self) {
@@ -192,32 +219,6 @@ struct Gui {
     message: Source<Option<Message>>,
 }
 
-impl Gui {
-    fn set_page(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
-        let (is_capturing, change) = match &page {
-            Page::SelectFile(_) => (
-                true,
-                Change::new()
-                    .with_effect(Effect::FetchFiles)
-                    .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
-            ),
-            Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
-            Page::Home(_) => (
-                false,
-                Change::new()
-                    .with_effect(Effect::SetPanel(Panel::default()))
-                    .with_focus_key(FocusKey::Home(home::FocusKey::default())),
-            ),
-        };
-
-        self.page.set(page);
-
-        IS_CAPTURING_ALL_KEYBOARD_INPUT.store(is_capturing, atomic::Ordering::Relaxed);
-
-        change
-    }
-}
-
 impl App for Gui {
     type Target = display::Driver;
 
@@ -232,6 +233,7 @@ impl App for Gui {
     fn new() -> Self {
         Self {
             page: Source::new(Page::Home(Home::default())),
+            // page: Source::new(Page::SelectFile(SelectFile::default())),
             message: Source::new(None),
 
             synth_parameters: Source::new(synth::Parameters::default()),
@@ -285,28 +287,36 @@ impl App for Gui {
             self.message.set(None);
         }
 
-        match (&mut *self.page, msg) {
-            (Page::Home(state), Msg::Home(home_msg)) => {
-                return state.update(|home| home.update(home_msg));
-            }
-            (Page::Editor, Msg::Editor(editor_msg)) => {
-                return self.editor.update(|editor| {
-                    editor
-                        .as_mut()
-                        .map(|editor| editor.update(editor_msg))
-                        .unwrap_or(Change::new())
+        match msg {
+            Msg::Page(page_msg) => {
+                return self.page.update(|page| {
+                    match (page, page_msg) {
+                        (Page::Home(state), PageMsg::Home(home_msg)) => {
+                            return state.update(home_msg);
+                        }
+                        (Page::Editor, PageMsg::Editor(editor_msg)) => {
+                            return self.editor.update(|editor| {
+                                editor
+                                    .as_mut()
+                                    .map(|editor| editor.update(editor_msg))
+                                    .unwrap_or(Change::new())
+                            });
+                        }
+                        (Page::SelectFile(home), PageMsg::SelectFile(home_msg)) => {
+                            home.update(home_msg);
+                        }
+
+                        _ => {}
+                    }
+                    Change::new()
                 });
             }
-            (Page::SelectFile(state), Msg::SelectFile(home_msg)) => {
-                return state.update(|home| home.update(home_msg));
-            }
-
-            (_, Msg::LoadCompleted(result)) => match result {
+            Msg::LoadCompleted(result) => match result {
                 Ok(source) => {
                     self.editor
                         .update(|editor| *editor = Some(editor::State::new(source)));
 
-                    return self.set_page(Page::Editor);
+                    return self.page.change(Page::Editor);
                 }
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -316,23 +326,23 @@ impl App for Gui {
                     self.message.set(Some(Message::now(text)));
                 }
             },
-            (_, Msg::SaveCompleted(result)) => match result {
+            Msg::SaveCompleted(result) => match result {
                 Ok(name) => {
                     let name = str::from_utf8(&name);
 
                     match name {
-                        Ok(name) => {
-                            self.message.set(Some(Message::now(Cow::Owned(format!(
-                                "Saved to {}!",
-                                name
-                            )))));
+                            Ok(name) => {
+                                self.message.set(Some(Message::now(Cow::Owned(format!(
+                                    "Saved to {}!",
+                                    name
+                                )))));
+                            }
+                            Err(_) => {
+                                self.message.set(Some(Message::now(Cow::Borrowed(
+                                    "The name of the file that was just saved to flash is invalid! Corruption has occured.",
+                                ))))
+                            }
                         }
-                        Err(_) => {
-                            self.message.set(Some(Message::now(Cow::Borrowed(
-                                "The name of the file that was just saved to flash is invalid! Corruption has occured.",
-                            ))))
-                        }
-                    }
                 }
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -342,7 +352,7 @@ impl App for Gui {
                     self.message.set(Some(Message::now(text)));
                 }
             },
-            (_, Msg::DeleteCompleted(result)) => match result {
+            Msg::DeleteCompleted(result) => match result {
                 Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -352,7 +362,7 @@ impl App for Gui {
                     self.message.set(Some(Message::now(text)));
                 }
             },
-            (_, Msg::RenameCompleted(result)) => match result {
+            Msg::RenameCompleted(result) => match result {
                 Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -363,21 +373,21 @@ impl App for Gui {
                 }
             },
 
-            (_, Msg::ChangeFocus(focus)) => {
+            Msg::ChangeFocus(focus) => {
                 return Change::new().with_focus_key(focus);
             }
-            (_, Msg::ChangePage(page)) => {
-                return self.set_page(page);
+            Msg::ChangePage(new_page) => {
+                return self.page.change(new_page);
             }
 
-            (_, Msg::SetSynthParameters(parameters)) => {
+            Msg::SetSynthParameters(parameters) => {
                 self.synth_parameters.set(parameters);
             }
-            (_, Msg::SetNewNote(note)) => {
+            Msg::SetNewNote(note) => {
                 self.new_note.set(Some((note, Instant::now())));
             }
 
-            (_, Msg::SaveFile) => {
+            Msg::SaveFile => {
                 if let Some(editor) = self.editor.as_ref() {
                     match editor.serialize() {
                         Ok(serialized) => {
@@ -394,11 +404,9 @@ impl App for Gui {
                     }
                 }
             }
+        };
 
-            _ => {}
-        }
-
-        return Change::new();
+        Change::new()
     }
 
     fn view<'a>(
@@ -445,7 +453,10 @@ impl App for Gui {
                 Page::Editor => {
                     let editor = v.interactive(
                         FocusKey::Editor,
-                        |event| editor::Msg::from_event(event).map(Msg::Editor),
+                        |event| {
+                            editor::Msg::from_event(event)
+                                .map(|msg| Msg::Page(PageMsg::Editor(msg)))
+                        },
                         |_| {
                             if let Some(editor) = self.editor.option_signal_ref() {
                                 v.component(Sizing::Fill, editor::Editor::new(editor), [])
@@ -462,10 +473,14 @@ impl App for Gui {
     }
 }
 
-enum Msg {
+enum PageMsg {
     Editor(editor::Msg),
     Home(home::Msg),
     SelectFile(select_file::Msg),
+}
+
+enum Msg {
+    Page(PageMsg),
 
     SaveFile,
 
@@ -483,17 +498,17 @@ enum Msg {
 
 impl From<editor::Msg> for Msg {
     fn from(editor_msg: editor::Msg) -> Msg {
-        Msg::Editor(editor_msg)
+        Msg::Page(PageMsg::Editor(editor_msg))
     }
 }
 impl From<select_file::Msg> for Msg {
     fn from(editor_msg: select_file::Msg) -> Msg {
-        Msg::SelectFile(editor_msg)
+        Msg::Page(PageMsg::SelectFile(editor_msg))
     }
 }
 impl From<home::Msg> for Msg {
     fn from(home_msg: home::Msg) -> Msg {
-        Msg::Home(home_msg)
+        Msg::Page(PageMsg::Home(home_msg))
     }
 }
 
@@ -561,7 +576,14 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 .await
             }
         }
-        let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, false);
+        let page_has_changed = gui.page.has_changed();
+
+        if page_has_changed {
+            driver.clear(Gui::background_color());
+        }
+
+        let Ok(_) =
+            embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, page_has_changed);
         driver.full_flush().await;
     }
 }

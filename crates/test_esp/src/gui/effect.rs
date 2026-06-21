@@ -4,7 +4,7 @@ use atomic::Atomic;
 
 use crate::{
     gui::{
-        Msg,
+        Msg, PageMsg,
         editor::{self, MAX_SIZE, source::Source},
         select_file,
     },
@@ -103,7 +103,7 @@ impl embedded_gui::effect::Effect for Effect {
             Effect::Delete(name) => Msg::DeleteCompleted(context.delete(&name).await),
             Effect::Rename { old, new } => Msg::RenameCompleted(context.rename(old, new).await),
 
-            Effect::FetchFiles => Msg::SelectFile(select_file::Msg::FilesReceived(
+            Effect::FetchFiles => Msg::Page(PageMsg::SelectFile(select_file::Msg::FilesReceived(
                 context
                     .storage
                     .load(&storage::FILE_LIST_KEY)
@@ -111,7 +111,7 @@ impl embedded_gui::effect::Effect for Effect {
                     .and_then(|serialized: [u8; MAX_SIZE]| {
                         Files::deserialize(&serialized).map_err(LoadError::Serialization)
                     }),
-            )),
+            ))),
 
             Effect::SetPanel(panel) => {
                 PANEL.store(panel, Ordering::Relaxed);

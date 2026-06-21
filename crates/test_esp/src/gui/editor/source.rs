@@ -3,6 +3,7 @@ use core::ops::Index;
 use alloc::vec;
 use alloc::vec::Vec;
 use embedded_storage_async::nor_flash::NorFlash;
+use esp_println::println;
 use sequential_storage::{cache::KeyCacheImpl, map::MapStorage};
 use serde::{Deserialize, Serialize};
 
@@ -44,13 +45,15 @@ impl Source {
     pub fn insert(&mut self, character: ByteChar, position: Position) -> Position {
         match character {
             b'\n' => {
-                self.lines.insert(position.line, ByteString::new());
+                let tail = self.lines[position.line].split_off(position.column);
+                self.lines.insert(position.line + 1, tail);
 
                 position.advance_newline()
             }
             _ => {
-                self.lines[position.line].insert(position.column, character);
+                let line = &mut self.lines[position.line];
 
+                line.insert(position.column, character);
                 position.advance()
             }
         }
@@ -59,16 +62,40 @@ impl Source {
     pub fn delete(&mut self, character: ByteChar, position: Position) -> Position {
         match character {
             b'\n' => {
-                self.lines.remove(position.line);
+                if self.lines.len() > 1 {
+                    let removed_line = self.lines.remove(position.line);
 
-                position.retreat_newline()
+                    let new_line_index = position.line.saturating_sub(1);
+                    let new_line = &mut self.lines[new_line_index];
+                    new_line.extend_from_slice(&removed_line);
+
+                    Position {
+                        line: new_line_index,
+                        column: new_line.len(),
+                    }
+                } else {
+                    position
+                }
             }
             _ => {
-                self.lines[position.line].remove(position.column);
+                let line = &mut self.lines[position.line];
 
-                position.retreat()
+                line.remove(position.column);
+
+                position
             }
         }
+    }
+
+    pub fn backspace_line(&mut self, position: Position) -> ByteString {
+        let line = &mut self.lines[position.line];
+        let mut removed = line.split_off(position.column);
+        core::mem::swap(line, &mut removed);
+
+        removed
+    }
+    pub fn forward_delete_line(&mut self, position: Position) -> ByteString {
+        self.lines[position.line].split_off(position.column)
     }
 
     pub fn group_insert(&mut self, text: &ByteStr, start: Position) -> Position {
@@ -153,13 +180,16 @@ impl Source {
 
     pub fn get_range(&self, range: SelectionRange) -> ByteString {
         let mut text = ByteString::new();
-        text.extend_from_slice(&self.lines[range.start.line][range.start.column..]);
+        text.extend_from_slice(&self.lines[range.start().line][range.start().column..]);
 
-        for line in self.lines[range.start.line + 1..range.end.line].iter() {
-            text.extend_from_slice(line);
+        if range.end().line > 0 {
+            for line in self.lines[range.start().line + 1..range.end().line].iter() {
+                text.push(b'\n');
+                text.extend_from_slice(line);
+            }
+
+            text.extend_from_slice(&self.lines[range.end().line][..range.end().column]);
         }
-
-        text.extend_from_slice(&self.lines[range.end.line][..range.end.column]);
 
         text
     }
@@ -207,8 +237,8 @@ impl From<&Source> for SerializedSource {
             .lines
             .iter()
             .fold(ByteString::new(), |mut text: ByteString, line| {
-                text.push(b'\n');
                 text.extend_from_slice(line);
+                text.push(b'\n');
                 text
             });
 

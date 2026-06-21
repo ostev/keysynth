@@ -5,19 +5,24 @@ use embedded_graphics::{
     pixelcolor::Rgb565,
     primitives::{CornerRadii, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StyledDrawable},
 };
+use esp_println::println;
 use serde::{Deserialize, Serialize};
 
 use crate::{gui::colors, text};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Position {
     pub line: usize,
     pub column: usize,
 }
 
 impl Position {
-    pub const fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
+    pub const fn new(line: usize, column: usize) -> Position {
+        Position { line, column }
+    }
+
+    pub const fn zero() -> Position {
+        Position { line: 0, column: 0 }
     }
 
     pub const fn advance_newline(self) -> Position {
@@ -48,14 +53,71 @@ impl Position {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Selection {
+    anchor: Option<Position>,
+}
+
+impl Selection {
+    pub fn new(anchor: Option<Position>) -> Selection {
+        Selection { anchor }
+    }
+
+    pub fn with_cursor(self, cursor: Position) -> Selection {
+        match self.anchor {
+            Some(anchor) => {
+                if anchor == cursor {
+                    Selection { anchor: None }
+                } else {
+                    self
+                }
+            }
+            None => Selection {
+                anchor: Some(cursor),
+            },
+        }
+    }
+
+    pub fn is_active(self) -> bool {
+        self.anchor.is_some()
+    }
+
+    pub fn clear(&mut self) {
+        self.anchor = None;
+    }
+
+    pub fn range(self, cursor: Position) -> Option<SelectionRange> {
+        self.anchor
+            .map(|anchor| SelectionRange::new(anchor, cursor))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectionRange {
-    pub start: Position,
-    pub end: Position,
+    start: Position,
+    end: Position,
 }
 
 impl SelectionRange {
-    pub const fn new(start: Position, end: Position) -> SelectionRange {
-        SelectionRange { start, end }
+    pub fn new(start: Position, end: Position) -> SelectionRange {
+        // Normalises the range so that start <= end
+        if start <= end {
+            SelectionRange { start, end }
+        } else {
+            SelectionRange {
+                start: end,
+                end: start,
+            }
+        }
+    }
+
+    #[inline]
+    pub const fn start(self) -> Position {
+        self.start
+    }
+
+    #[inline]
+    pub const fn end(self) -> Position {
+        self.end
     }
 
     pub fn draw<T: DrawTarget<Color = Rgb565>>(
@@ -64,15 +126,22 @@ impl SelectionRange {
         line_start: Point,
         target: &mut T,
     ) -> Result<(), T::Error> {
+        const CORNER_RADIUS: u32 = 2;
+
+        let width = self.end.column - self.start.column;
+
         let rounded = RoundedRectangle::new(
             Rectangle::new(
                 line_start + Point::new(text::width(font, self.start.column as u32) as i32, 0),
                 embedded_graphics::geometry::Size::new(
-                    text::width(font, self.end.column as u32),
+                    text::width(font, width as u32),
                     font.character_size.height,
                 ),
             ),
-            CornerRadii::new(embedded_graphics::geometry::Size::new(2, 2)),
+            CornerRadii::new(embedded_graphics::geometry::Size::new(
+                CORNER_RADIUS,
+                CORNER_RADIUS,
+            )),
         );
         rounded.draw_styled(
             &PrimitiveStyleBuilder::new()

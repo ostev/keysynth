@@ -59,8 +59,12 @@ impl<const N: usize> State<N> {
             Msg::Insert(character) => {
                 let _ = self.buffer.insert(character);
             }
-            Msg::Delete => {
+            Msg::Backspace => {
                 self.buffer.backspace();
+            }
+            Msg::ForwardDelete => {
+                // If this fails, then we've reached the end of the line.
+                let _ = self.buffer.try_forward_delete();
             }
 
             Msg::NoOp => {}
@@ -121,7 +125,10 @@ impl<'a, const N: usize> Primitive<display::Driver> for LineEditor<'a, N> {
 
         draw_cursor(
             &FONT,
-            embedded_graphics::geometry::Point::new(self.state.buffer.cursor() as i32, PADDING),
+            embedded_graphics::geometry::Point::new(
+                self.state.buffer.cursor() as i32 * FONT.character_size.width as i32,
+                PADDING,
+            ),
             target,
         );
 
@@ -136,7 +143,8 @@ pub enum Msg {
 
     // Editing
     Insert(ByteChar),
-    Delete,
+    Backspace,
+    ForwardDelete,
 
     NoOp,
 }
@@ -161,18 +169,14 @@ impl Msg {
                                 StandardKey::Right if is_super => {
                                     Msg::JumpInsert(MovementDirection::Right)
                                 }
-                                StandardKey::Down if is_super => {
-                                    Msg::JumpInsert(MovementDirection::Left)
-                                }
-                                StandardKey::Up if is_super => {
-                                    Msg::JumpInsert(MovementDirection::Right)
-                                }
 
                                 // Move cursor
                                 StandardKey::Left => Msg::MoveInsert(MovementDirection::Left),
                                 StandardKey::Right => Msg::MoveInsert(MovementDirection::Right),
-                                StandardKey::Down => Msg::MoveInsert(MovementDirection::Left),
-                                StandardKey::Up => Msg::MoveInsert(MovementDirection::Right),
+
+                                // Deletion
+                                StandardKey::Backspace => Msg::Backspace,
+                                StandardKey::Delete => Msg::ForwardDelete,
 
                                 _ => {
                                     if let Some(character) = standard.to_char(is_shift) {

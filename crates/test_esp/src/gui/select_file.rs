@@ -7,6 +7,7 @@ use embedded_gui::{
     signal::{Reactive, Signal, SignalRef, Source},
     view::View,
 };
+use keyboard_protocol::{Key, StandardKey};
 
 pub mod file_list;
 
@@ -22,7 +23,7 @@ use crate::{
         select_file::file_list::{FileList, ScrollDirection},
         text_bar::{OwnedTextBar, TextBar},
     },
-    input::event::Event,
+    input::event::{Event, KeyEvent},
     storage::{self, Files, LoadError, MAX_FILES},
     text::{NAME_SIZE, Name, fixed_str},
 };
@@ -122,69 +123,132 @@ impl SelectFile {
         const BAR_HEIGHT: u16 = 40;
 
         let file_name = self.line_editor.as_fixed_byte_string();
+        let num_files = self.files.len();
 
         v.view(
             Direction::Vertical,
             [
-                v.interactive(
-                    FocusKey::NewFile,
-                    move |event| {
-                        event::handler(
-                            event,
-                            {
-                                gui::Msg::ChangeFocus(gui::FocusKey::SelectFile(
-                                    FocusKey::FileList(0),
-                                ))
-                            },
-                            Msg::NoOp.into(),
-                            gui::Msg::LoadCompleted(Ok(editor::source::Source::new(
-                                file_name.clone(),
-                            ))),
-                        )
-                    },
-                    |_| {
-                        v.component(
-                            Sizing::Constrained(BAR_HEIGHT),
-                            Group::zero(Signal::constant(Direction::Horizontal)),
-                            [
-                                v.primitive(
-                                    Sizing::Intrinsic,
-                                    Text {
-                                        content: SignalRef::constant(&"New file: "),
-                                        font_style: Signal::constant(
-                                            MonoTextStyleBuilder::new()
-                                                .font(&ascii::FONT_6X13_ITALIC)
-                                                .text_color(colors::TEXT)
-                                                .underline_with_color(colors::PURPLE)
-                                                .build(),
-                                        ),
-                                    },
-                                ),
-                                v.spacer(),
-                                v.primitive(
-                                    Sizing::Intrinsic,
-                                    LineEditor::new(self.line_editor.signal_ref()),
-                                ),
-                            ],
-                        )
-                    },
-                ),
-                v.component(
-                    Sizing::Fill,
-                    FileList {
-                        files: self.files.signal_ref(),
-                        scroll: self.scroll.signal(),
-                    },
-                    [],
-                ),
-                v.component(
-                    Sizing::Constrained(BAR_HEIGHT),
-                    TextBar {
-                        text: SignalRef::constant(
-                            &"[enter] to select, [super + backspace] to delete",
+                v.primitive(
+                    Sizing::Intrinsic,
+                    Text {
+                        content: SignalRef::constant(&"HEY WHATS UPPPP HEYYYYYYYY THERE HIII"),
+                        font_style: Signal::constant(
+                            MonoTextStyleBuilder::new()
+                                .font(&ascii::FONT_10X20)
+                                .text_color(colors::TEXT)
+                                .underline_with_color(colors::PURPLE)
+                                .build(),
                         ),
                     },
-                    [],
+                ),
+                v.centered(
+                    Direction::Horizontal,
+                    v.group(
+                        Direction::Vertical,
+                        Sizing::Constrained(200),
+                        [
+                            v.interactive(
+                                FocusKey::NewFile,
+                                // move |event| {
+                                //     event::handler(
+                                //         event,
+                                //         {
+                                //             gui::Msg::ChangeFocus(gui::FocusKey::SelectFile(
+                                //                 FocusKey::FileList(0),
+                                //             ))
+                                //         },
+                                //         Msg::NoOp.into(),
+                                //         gui::Msg::LoadCompleted(Ok(editor::source::Source::new(
+                                //             file_name.clone(),
+                                //         ))),
+                                //     )
+                                // },
+                                // event::on_keydown(
+                                //     |key| match key {
+
+                                //         _ => Some(Msg::LineEditor(()))
+                                //     },
+                                //     |key| Some(),
+                                // ),
+                                move |event| match event {
+                                    Event::Key {
+                                        event: key_event, ..
+                                    } => match key_event {
+                                        KeyEvent::Pressed(key) => match key {
+                                            Key::Standard(StandardKey::Down) => {
+                                                if num_files > 0 {
+                                                    Some(gui::Msg::ChangeFocus(
+                                                        gui::FocusKey::SelectFile(
+                                                            FocusKey::FileList(0),
+                                                        ),
+                                                    ))
+                                                } else {
+                                                    None
+                                                }
+                                            }
+                                            Key::Standard(StandardKey::Enter) => {
+                                                Some(gui::Msg::LoadCompleted(Ok(
+                                                    editor::source::Source::new(file_name.clone()),
+                                                )))
+                                            }
+                                            _ => Some(
+                                                Msg::LineEditor(line::Msg::from_event(event))
+                                                    .into(),
+                                            ),
+                                        },
+
+                                        _ => Some(
+                                            Msg::LineEditor(line::Msg::from_event(event)).into(),
+                                        ),
+                                    },
+                                    _ => Some(Msg::LineEditor(line::Msg::from_event(event)).into()),
+                                },
+                                |_| {
+                                    v.component(
+                                        Sizing::Constrained(BAR_HEIGHT),
+                                        Group::zero(Signal::constant(Direction::Horizontal)),
+                                        [
+                                            v.primitive(
+                                                Sizing::Intrinsic,
+                                                Text {
+                                                    content: SignalRef::constant(&"New file: "),
+                                                    font_style: Signal::constant(
+                                                        MonoTextStyleBuilder::new()
+                                                            .font(&ascii::FONT_6X13_ITALIC)
+                                                            .text_color(colors::TEXT)
+                                                            .underline_with_color(colors::PURPLE)
+                                                            .build(),
+                                                    ),
+                                                },
+                                            ),
+                                            v.spacer(),
+                                            v.primitive(
+                                                Sizing::Intrinsic,
+                                                LineEditor::new(self.line_editor.signal_ref()),
+                                            ),
+                                        ],
+                                    )
+                                },
+                            ),
+                            v.component(
+                                Sizing::Fill,
+                                FileList {
+                                    files: self.files.signal_ref(),
+                                    scroll: self.scroll.signal(),
+                                },
+                                [],
+                            ),
+                            v.component(
+                                Sizing::Constrained(BAR_HEIGHT),
+                                TextBar {
+                                    text: SignalRef::constant(
+                                        &"[enter] to select, [super + backspace] to delete",
+                                    ),
+                                },
+                                [],
+                            ),
+                        ],
+                    ),
                 ),
             ],
         )

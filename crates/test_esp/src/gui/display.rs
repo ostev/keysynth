@@ -237,7 +237,7 @@ pub struct Driver {
 
     orientation: Orientation,
     framebuffer: Box<Framebuffer>,
-    dirty_rows: [bool; HEIGHT],
+    dirty_rows: [bool; WIDTH],
 }
 
 type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
@@ -266,7 +266,7 @@ impl Driver {
             hardware: driver_hardware,
             orientation,
             framebuffer: Box::new(Framebuffer::new()),
-            dirty_rows: [false; HEIGHT],
+            dirty_rows: [false; WIDTH],
         };
 
         driver.hardware.reset();

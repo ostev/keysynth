@@ -1,4 +1,4 @@
-use core::cmp;
+use core::{cmp, hint::select_unpredictable};
 
 use alloc::{
     borrow::{Cow, ToOwned},
@@ -7,6 +7,8 @@ use alloc::{
 use embassy_time::{Duration, Instant};
 use embedded_gui::{app::Change, size::Size};
 use embedded_storage_async::nor_flash::NorFlash;
+use esp_alloc::export::enumset::__internal::set::new;
+use esp_println::println;
 use keyboard_protocol::{Key, Modifier, StandardKey};
 
 use crate::{
@@ -16,7 +18,7 @@ use crate::{
             MAX_SIZE,
             clipboard::Clipboard,
             history::{self, History},
-            position::{Direction, Position, SelectionRange},
+            position::{Direction, Position, Selection, SelectionRange},
             source::Source,
         },
         effect::Effect,
@@ -26,17 +28,22 @@ use crate::{
     text::{ByteChar, ByteString, Name, fixed_str},
 };
 
+/// Determines how many lines of text are visible on the screen at once.
+pub const LINES_VISIBLE: usize = 8;
+
+/// Determines how many lines from either edge of the screen before the editor scrolls.
+pub const SCROLL_GAP: usize = 2;
+
 #[derive(Clone)]
 pub struct EditorState {
     pub(super) source: Source,
     pub(super) cursor: Position,
-    pub(super) selection: Option<SelectionRange>,
+    pub(super) selection: Selection,
     pub(super) clipboard: Clipboard,
     pub(super) history: History,
     pub(super) message: Option<Message>,
 
     pub(super) scroll_start: usize,
-    pub(super) lines_visible: usize,
 }
 
 impl Default for EditorState {
@@ -47,16 +54,17 @@ impl Default for EditorState {
 
 impl EditorState {
     pub fn new(source: Source) -> Self {
+        let cursor = Position::new(0, 0);
+
         Self {
             source,
-            cursor: Position::new(0, 0),
-            selection: None,
+            cursor,
+            selection: Selection::new(None),
             clipboard: Clipboard::new(),
-            history: History::new(),
+            history: History::new(cursor),
             message: None,
 
             scroll_start: 0,
-            lines_visible: 10,
         }
     }
 
@@ -92,38 +100,14 @@ impl EditorState {
         unsafe { self.source.to_string_unchecked() }
     }
 
-    // fn intrinsic_size(&self) -> Size {
-    //     let font = embedded_graphics::mono_font::ascii::FONT_8X13;
-
-    //     let char_width = font.character_size.width as u16;
-    //     let line_height = font.character_size.height as u16;
-
-    //     let max_chars = self
-    //         .source
-    //         .lines
-    //         .iter()
-    //         // Since we only support ASCII, `len` works fine here as one character
-    //         // is always one byte.
-    //         .map(|line| line.len() as u16)
-    //         .max()
-    //         .unwrap_or(0);
-
-    //     Size::new(
-    //         max_chars * char_width,
-    //         self.source.lines.len() as u16 * line_height,
-    //     )
-    // }
-
     pub fn update(&mut self, msg: Msg) -> Change<gui::Msg, gui::FocusKey, gui::Effect> {
         self.clear_message_if_old();
 
         match msg {
             Msg::MoveInsert(direction) => {
-                self.selection = None;
                 self.move_cursor(direction, false);
             }
             Msg::JumpInsert(direction) => {
-                self.selection = None;
                 self.jump_cursor(direction, false);
             }
             Msg::MoveSelection(direction) => {
@@ -135,27 +119,46 @@ impl EditorState {
             Msg::SelectAll => self.select_all(),
             Msg::SelectLine => self.select_line(),
             Msg::Insert(character) => {
-                self.history
-                    .push(history::Edit::Insert(character, self.cursor));
+                if self.selection.is_active() {
+                    self.delete(false, false);
+                }
 
-                self.cursor = self.source.insert(character, self.cursor);
+                let new_cursor = self.source.insert(character, self.cursor);
+
+                self.history.push(
+                    history::Edit::Insert(character, self.cursor),
+                    self.cursor,
+                    new_cursor,
+                );
+                self.cursor = new_cursor;
             }
-            Msg::Delete => self.delete(),
+
+            Msg::Backspace => self.delete(false, false),
+            Msg::BackspaceLine => self.delete(false, true),
+            Msg::ForwardDelete => self.delete(true, false),
+            Msg::ForwardDeleteLine => self.delete(true, true),
+
             Msg::Copy => self.copy(),
             Msg::Paste => self.paste(),
             Msg::Cut => {
                 self.copy();
-                self.delete();
+                self.delete(false, false);
             }
 
             Msg::Undo => {
-                if let Some(edit) = self.history.undo() {
+                if let Some((edit, cursor)) = self.history.undo() {
                     self.source.apply(edit);
+                    self.cursor = cursor;
+
+                    self.selection.clear();
                 }
             }
             Msg::Redo => {
-                if let Some(edit) = self.history.redo() {
+                if let Some((edit, cursor)) = self.history.redo() {
                     self.source.apply(edit);
+                    self.cursor = cursor;
+
+                    self.selection.clear();
                 }
             }
 
@@ -176,46 +179,109 @@ impl EditorState {
     }
 
     fn copy(&mut self) {
-        if let Some(selection) = self.selection {
-            if let Err(error) = self.clipboard.set(self.source.get_range(selection)) {
+        if let Some(selection_range) = self.selection.range(self.cursor) {
+            if let Err(error) = self.clipboard.set(self.source.get_range(selection_range)) {
                 self.message = Some(Message::now(Cow::Borrowed(error.as_str())))
             }
         }
     }
 
-    fn delete(&mut self) {
-        match self.selection {
-            Some(range) => {
-                let text = self.source.get_range(range);
+    fn delete(&mut self, is_forward: bool, is_line: bool) {
+        match self.selection.range(self.cursor) {
+            Some(selection_range) => {
+                let text = self.source.get_range(selection_range);
 
                 let new_cursor = self.source.group_delete(&text, self.cursor);
-                self.history
-                    .push(history::Edit::GroupDelete(text, self.cursor));
+
+                self.history.push(
+                    history::Edit::GroupDelete(text, self.cursor),
+                    self.cursor,
+                    new_cursor,
+                );
 
                 self.cursor = new_cursor;
+                self.selection.clear();
             }
 
             None => {
-                let character = self.source.lines[self.cursor.line][self.cursor.column];
+                if is_line {
+                    let (edit, new_column) = if is_forward {
+                        let deleted = self.source.forward_delete_line(self.cursor);
+                        (
+                            history::Edit::GroupDelete(deleted, self.cursor),
+                            self.source.lines[self.cursor.line].len().saturating_sub(1),
+                        )
+                    } else {
+                        let deleted = self.source.backspace_line(self.cursor);
+                        (
+                            history::Edit::GroupDelete(
+                                deleted,
+                                Position {
+                                    line: self.cursor.line,
+                                    column: 0,
+                                },
+                            ),
+                            0,
+                        )
+                    };
 
-                self.history
-                    .push(history::Edit::Delete(character, self.cursor));
+                    let new_cursor = Position {
+                        line: self.cursor.line,
+                        column: new_column,
+                    };
 
-                self.cursor = self.source.delete(character, self.cursor);
+                    self.history.push(edit, self.cursor, new_cursor);
+                    self.cursor = new_cursor;
+                } else {
+                    let line = &mut self.source.lines[self.cursor.line];
+
+                    let deletion_cursor = if is_forward {
+                        self.cursor
+                    } else {
+                        Position {
+                            line: self.cursor.line,
+                            column: self.cursor.column.saturating_sub(1),
+                        }
+                    };
+
+                    let character = line
+                        .get(deletion_cursor.column)
+                        .map(|char| *char)
+                        .unwrap_or(b'\n');
+
+                    let new_cursor = self.source.delete(character, deletion_cursor);
+
+                    self.history.push(
+                        history::Edit::Delete(character, self.cursor),
+                        self.cursor,
+                        new_cursor,
+                    );
+                    self.cursor = new_cursor;
+                }
             }
         }
     }
 
     fn paste(&mut self) {
+        if self.selection.is_active() {
+            // Delete the current selection if there is one
+            self.delete(false, false);
+        }
+
         let text = self.clipboard.get();
 
-        self.history
-            .push(history::Edit::GroupInsert(text.to_owned(), self.cursor));
+        let new_cursor = self.source.group_insert(text, self.cursor);
 
-        self.cursor = self.source.group_insert(text, self.cursor);
+        self.history.push(
+            history::Edit::GroupInsert(text.to_owned(), self.cursor),
+            self.cursor,
+            new_cursor,
+        );
+
+        self.cursor = new_cursor;
     }
 
-    fn move_cursor(&mut self, direction: Direction, selecting: bool) {
+    fn move_cursor(&mut self, direction: Direction, is_selecting: bool) {
         let start = self.cursor;
 
         match direction {
@@ -224,28 +290,69 @@ impl EditorState {
             }
             Direction::Right => {
                 self.cursor.column = self.cursor.column.saturating_add(1);
+                self.clamp_cursor_column();
             }
             Direction::Up => {
-                self.cursor.line = self.cursor.line.saturating_sub(1);
-                self.clamp_cursor_column();
+                self.move_cursor_up(1);
+                self.scroll();
             }
             Direction::Down => {
-                self.cursor.line = self.cursor.line.saturating_add(1);
-                self.clamp_cursor_column();
+                self.move_cursor_down(1);
+                self.scroll();
             }
         }
 
-        self.update_selection(start, selecting);
+        self.update_selection(start, is_selecting);
+    }
+
+    /// Updates the active selection if the user is selecting and clears it if not.
+    fn update_selection(&mut self, start_cursor: Position, is_selecting: bool) {
+        if is_selecting {
+            self.selection = self.selection.with_cursor(start_cursor)
+        } else {
+            self.selection.clear();
+        }
+    }
+
+    /// Moves the cursor up the file by a specified amount
+    fn move_cursor_up(&mut self, amount: usize) {
+        self.cursor.line = self.cursor.line.saturating_sub(amount);
+        self.clamp_cursor_column();
+    }
+
+    /// Moves the cursor down the file by a specified amount
+    fn move_cursor_down(&mut self, amount: usize) {
+        self.cursor.line = self
+            .cursor
+            .line
+            .saturating_add(amount)
+            .min(self.source.lines.len().saturating_sub(1));
+        self.clamp_cursor_column();
+    }
+
+    /// Scrolls the editor vertically if necessary
+    fn scroll(&mut self) {
+        let offset_from_top = self.cursor.line.saturating_sub(self.scroll_start);
+        let offset_from_bottom = LINES_VISIBLE.saturating_sub(offset_from_top);
+
+        if offset_from_top < SCROLL_GAP {
+            // Scroll up!
+            self.scroll_start = self.cursor.line.saturating_sub(SCROLL_GAP);
+        } else if offset_from_bottom < SCROLL_GAP {
+            // Scroll down!
+            // We don't need `saturating_add` since we won't reach `u32::MAX` lines.
+            self.scroll_start = self.cursor.line + SCROLL_GAP;
+        }
     }
 
     fn clamp_cursor_column(&mut self) {
         self.cursor.column = cmp::min(
             self.cursor.column,
-            self.source.lines[self.cursor.line].len().saturating_sub(1),
+            self.source.lines[self.cursor.line].len(),
         );
     }
 
-    fn jump_cursor(&mut self, direction: Direction, selecting: bool) {
+    fn jump_cursor(&mut self, direction: Direction, is_selecting: bool) {
         let start = self.cursor;
 
         match direction {
@@ -261,42 +368,25 @@ impl EditorState {
             }
         }
 
-        self.update_selection(start, selecting);
-    }
-
-    fn update_selection(&mut self, start: Position, is_selecting: bool) {
-        if is_selecting {
-            let selection_start = self
-                .selection
-                .map(|selection| selection.start)
-                .unwrap_or(start);
-
-            self.selection = Some(SelectionRange {
-                start: selection_start,
-                end: self.cursor,
-            });
-        } else {
-            self.selection = None;
-        }
+        self.update_selection(start, is_selecting);
     }
 
     fn select_all(&mut self) {
         let last_line = self.source.lines.len().saturating_sub(1);
         let end_col = self.source.lines[last_line].len();
 
-        self.selection = Some(SelectionRange {
-            start: Position::new(0, 0),
-            end: Position::new(last_line, end_col),
-        });
+        self.cursor = Position {
+            line: last_line,
+            column: end_col,
+        };
+        self.selection = Selection::new(Some(Position::zero()));
     }
 
     fn select_line(&mut self) {
         let line_len = self.source.lines[self.cursor.line].len();
 
-        self.selection = Some(SelectionRange {
-            start: Position::new(self.cursor.line, 0),
-            end: Position::new(self.cursor.line, line_len),
-        });
+        self.cursor.column = line_len;
+        self.selection = Selection::new(Some(Position::new(self.cursor.line, 0)));
     }
 }
 
@@ -307,7 +397,10 @@ pub enum Msg {
 
     // Editing
     Insert(ByteChar),
-    Delete,
+    Backspace,
+    BackspaceLine,
+    ForwardDelete,
+    ForwardDeleteLine,
 
     // Selection
     MoveSelection(Direction),
@@ -401,6 +494,22 @@ impl Msg {
                                         Msg::Redo
                                     } else {
                                         Msg::Undo
+                                    }
+                                }
+
+                                // Deletion
+                                StandardKey::Backspace => {
+                                    if is_super {
+                                        Msg::BackspaceLine
+                                    } else {
+                                        Msg::Backspace
+                                    }
+                                }
+                                StandardKey::Delete => {
+                                    if is_super {
+                                        Msg::ForwardDeleteLine
+                                    } else {
+                                        Msg::ForwardDelete
                                     }
                                 }
 
