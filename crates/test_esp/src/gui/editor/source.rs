@@ -62,7 +62,7 @@ impl Source {
     /// Delete the specified character at the provided cursor position.
     pub fn delete(&mut self, position: Position) -> Position {
         if position.column == 0 {
-            if self.lines.len() > 1 {
+            if position.line > 0 {
                 let removed_line = self.lines.remove(position.line);
 
                 let new_line_index = position.line.saturating_sub(1);
@@ -81,10 +81,14 @@ impl Source {
             }
         } else {
             let line = &mut self.lines[position.line];
+            let new_column = position.column - 1;
 
-            line.remove(position.column);
+            line.remove(new_column);
 
-            position
+            Position {
+                line: position.line,
+                column: new_column,
+            }
         }
     }
 
@@ -115,7 +119,7 @@ impl Source {
                 end.column -= 1;
             } else {
                 end.line -= 1;
-                end.column = self.lines[end.line].len() - 1;
+                end.column = self.lines[end.line].len().saturating_sub(1);
             }
 
             self.delete(end);

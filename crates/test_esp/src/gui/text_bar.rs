@@ -1,6 +1,9 @@
 use bumpalo::boxed::Box;
 use embedded_graphics::{
-    mono_font::{MonoTextStyleBuilder, ascii::FONT_6X12},
+    mono_font::{
+        MonoFont, MonoTextStyleBuilder,
+        ascii::{FONT_6X12, FONT_10X20},
+    },
     pixelcolor::{Rgb565, RgbColor},
 };
 use embedded_gui::{
@@ -17,6 +20,8 @@ use crate::{
     input::event::Event,
     text::FixedByteString,
 };
+
+const FONT: MonoFont = FONT_10X20;
 
 #[derive(Reactive)]
 pub struct OwnedTextBar<const N: usize> {
@@ -68,12 +73,12 @@ where
             [v.centered(
                 Direction::Horizontal,
                 v.primitive(
-                    Sizing::Constrained(N as u16 * FONT_6X12.character_size.width as u16),
+                    Sizing::Constrained(N as u16 * FONT.character_size.width as u16),
                     OwnedText {
                         content: self.text.clone(),
                         font_style: Signal::constant(
                             MonoTextStyleBuilder::new()
-                                .font(&FONT_6X12)
+                                .font(&FONT)
                                 .underline()
                                 .text_color(colors::BACKGROUND_DARK)
                                 .build(),
@@ -94,10 +99,7 @@ pub struct TextBar<'a, S: AsRef<str>> {
 
 impl<'a, S: AsRef<str>> IntrinsicSize for TextBar<'a, S> {
     fn intrinsic_size(&self) -> embedded_gui::size::Size {
-        Size::new(
-            display::WIDTH as u16,
-            FONT_6X12.character_size.height as u16,
-        )
+        Size::new(display::WIDTH as u16, FONT.character_size.height as u16)
     }
 }
 
@@ -145,7 +147,7 @@ where
                         content: self.text.clone(),
                         font_style: Signal::constant(
                             MonoTextStyleBuilder::new()
-                                .font(&FONT_6X12)
+                                .font(&FONT)
                                 .underline()
                                 .text_color(colors::BACKGROUND_DARK)
                                 .build(),

@@ -44,7 +44,7 @@ pub struct Editor<'a> {
 
 impl<'a> IntrinsicSize for Editor<'a> {
     fn intrinsic_size(&self) -> embedded_gui::size::Size {
-        Size::new(200, 200)
+        Size::new(display::WIDTH as u16, display::HEIGHT as u16)
     }
 }
 
@@ -86,7 +86,7 @@ impl<'a>
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
     > {
-        const BAR_HEIGHT: u16 = 40;
+        const BAR_HEIGHT: u16 = 20;
         let text = self.state.map(|state| {
             heapless::String::from_utf8(state.source.name.clone())
                 .unwrap_or(heapless::format!("<corrupted>").unwrap())
@@ -105,11 +105,11 @@ impl<'a>
                         },
                     )
                 }),
-                v.background(
-                    Sizing::Constrained(BAR_HEIGHT),
-                    Signal::constant(colors::PURPLE),
-                    [],
-                ),
+                // v.background(
+                //     Sizing::Constrained(BAR_HEIGHT),
+                //     Signal::constant(colors::PURPLE),
+                //     [],
+                // ),
             ],
         )
     }

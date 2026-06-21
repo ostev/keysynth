@@ -274,13 +274,13 @@ impl EditorState {
                     let deletion_cursor = if is_forward {
                         self.cursor
                     } else {
-                        if self.cursor.column > 0 {
+                        if self.cursor.column > 0 || self.cursor.line > 0 {
                             Position {
                                 line: self.cursor.line,
-                                column: self.cursor.column - 1,
+                                column: self.cursor.column,
                             }
                         } else {
-                            // We're at the start of the line, and we can't backspace here.
+                            // We're at the start of the document, and we can't backspace here.
                             return;
                         }
                     };

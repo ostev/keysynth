@@ -116,17 +116,22 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
                     embedded_graphics::geometry::Point::new(0, y_offset),
                 );
 
-                draw(
-                    unsafe { str::from_utf8_unchecked(&line[scroll_x_offset..]) },
-                    line_start,
-                );
+                if line.len() > scroll_x_offset {
+                    draw(
+                        unsafe { str::from_utf8_unchecked(&line[scroll_x_offset..]) },
+                        line_start,
+                    );
+                }
 
                 if index == self.state.cursor.line {
                     draw_cursor(
                         &FONT,
                         embedded_graphics::geometry::Point::new(
-                            (GUTTER_WIDTH + text::width(&FONT, self.state.cursor.column as u32 + 1))
-                                as i32,
+                            (GUTTER_WIDTH
+                                + text::width(
+                                    &FONT,
+                                    (self.state.cursor.column - scroll_x_offset + 1) as u32,
+                                )) as i32,
                             y_offset,
                         ),
                         target,

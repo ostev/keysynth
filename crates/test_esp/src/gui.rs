@@ -459,7 +459,7 @@ impl App for Gui {
                         },
                         |_| {
                             if let Some(editor) = self.editor.option_signal_ref() {
-                                v.component(Sizing::Fill, editor::Editor::new(editor), [])
+                                v.component(Sizing::Intrinsic, editor::Editor::new(editor), [])
                             } else {
                                 v.spacer()
                             }
