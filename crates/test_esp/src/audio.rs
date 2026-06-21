@@ -158,13 +158,14 @@ impl State {
     pub fn new() -> State {
         let default_wavetable = Wavetable::from_fn(libm::sinf);
 
-        let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> = Synth::new(
-            SAMPLE_RATE as f32,
-            [default_wavetable.clone(), default_wavetable],
-            Parameters::default(),
-        );
+        let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> =
+            Synth::new(SAMPLE_RATE as f32, default_wavetable, Parameters::default());
 
         State { synth }
+    }
+
+    pub fn set_wavetable(&mut self, wavetable: Wavetable<WAVETABLE_SIZE>) {
+        self.synth.wavetable = wavetable;
     }
 
     pub fn sample(&mut self) -> AudioPacket {

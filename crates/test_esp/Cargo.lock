@@ -228,6 +228,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespan"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "583f52b0658b321b25fd6b209b6c76cf058f433071297de64e5980c3d9aad937"
+dependencies = [
+ "codespan-reporting",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -642,6 +651,15 @@ checksum = "95743bef3ff70fcba3930246c4e6872882bbea0dcc6da2ca860112e0cd4bd09f"
 dependencies = [
  "az",
  "byteorder",
+]
+
+[[package]]
+name = "embedded-graphics-unicodefonts"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a82ef1580d1bff3e89bd3e68069acb24910b66001aaab1738ce9de8d03d2ab1e"
+dependencies = [
+ "embedded-graphics",
 ]
 
 [[package]]
@@ -2159,6 +2177,8 @@ dependencies = [
  "bytemuck",
  "calc",
  "circular-buffer",
+ "codespan",
+ "codespan-reporting",
  "critical-section",
  "embassy-embedded-hal",
  "embassy-executor",
@@ -2166,6 +2186,7 @@ dependencies = [
  "embassy-sync 0.8.0",
  "embassy-time",
  "embedded-graphics",
+ "embedded-graphics-unicodefonts",
  "embedded-gui",
  "embedded-hal 1.0.0",
  "embedded-hal-async",

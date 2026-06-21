@@ -89,7 +89,7 @@ impl EditorState {
                 })
                 .unwrap_or(heapless::format!("<corrupted>").unwrap())
             })
-            .unwrap_or(heapless::format!("...").unwrap())
+            .unwrap_or(heapless::format!("empty").unwrap())
     }
 
     pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> Result<&'a [u8], postcard::Error> {

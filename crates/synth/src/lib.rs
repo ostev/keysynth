@@ -22,7 +22,7 @@ pub mod wavetable;
 pub const DEFAULT_SAMPLE_RATE: u32 = 44_100;
 
 pub struct Synth<const N: usize, const S: usize> {
-    pub wavetables: [Wavetable<S>; 2],
+    pub wavetable: Wavetable<S>,
 
     voices: [Option<Voice<S>>; N],
 
@@ -67,13 +67,9 @@ pub enum PlayError {
 pub type Sample = i16;
 
 impl<const N: usize, const S: usize> Synth<N, S> {
-    pub const fn new(
-        sample_rate: f32,
-        wavetables: [Wavetable<S>; 2],
-        parameters: Parameters,
-    ) -> Self {
+    pub const fn new(sample_rate: f32, wavetable: Wavetable<S>, parameters: Parameters) -> Self {
         Self {
-            wavetables,
+            wavetable,
             voices: [const { None }; N],
             vcf: Vcf::new(),
             sample_rate,
@@ -103,7 +99,6 @@ impl<const N: usize, const S: usize> Synth<N, S> {
             Some(voice) => {
                 *voice = Some(Voice::new(
                     self.sample_rate,
-                    WavetableOscillator::new(self.sample_rate),
                     WavetableOscillator::new(self.sample_rate),
                     note,
                     self.parameters.voice_gain,
@@ -191,7 +186,7 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         for sample in buffer.iter_mut() {
             *sample = Synth::<N, S>::sample_voices(
                 &mut self.vcf,
-                &self.wavetables,
+                &self.wavetable,
                 self.parameters.cutoff,
                 self.parameters.resonance,
                 voices.iter_mut().map(|voice| {
@@ -204,14 +199,14 @@ impl<const N: usize, const S: usize> Synth<N, S> {
 
     fn sample_voices<'a>(
         vcf: &mut Vcf,
-        wavetables: &[Wavetable<S>; 2],
+        wavetable: &Wavetable<S>,
         cutoff: f32,
         resonance: f32,
         voices: impl IntoIterator<Item = &'a mut Voice<S>>,
     ) -> Sample {
         let voice_output = voices
             .into_iter()
-            .map(|voice| voice.sample(wavetables, 0.0))
+            .map(|voice| voice.sample(wavetable))
             .sum();
 
         let with_vcf = vcf.sample(voice_output, cutoff, resonance).clamp(-1.0, 1.0);

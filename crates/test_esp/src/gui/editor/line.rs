@@ -1,6 +1,7 @@
 use core::convert::Infallible;
 
 use embedded_graphics::{
+    geometry::OriginDimensions,
     mono_font::{MonoFont, MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Rgb565,
     primitives::Rectangle,
@@ -109,7 +110,7 @@ impl<'a, const N: usize> Primitive<display::Driver> for LineEditor<'a, N> {
         draw_background(
             Rectangle::new(
                 embedded_graphics::geometry::Point::zero(),
-                self.intrinsic_size().into(),
+                target.size().into(),
             ),
             target,
         );

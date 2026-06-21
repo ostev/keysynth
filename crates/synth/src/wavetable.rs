@@ -19,6 +19,21 @@ impl<const S: usize> Wavetable<S> {
         }
     }
 
+    pub fn try_from_fn<E>(mut generator: impl FnMut(f32) -> Result<f32, E>) -> Result<Self, E> {
+        let phase_per_index = 2.0 * f32::consts::PI / S as f32;
+
+        let mut samples = [0.0; S];
+
+        for (index, entry) in samples.iter_mut().enumerate() {
+            match generator(phase_per_index * index as f32) {
+                Ok(sample) => *entry = sample,
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(Self { samples })
+    }
+
     pub fn from_samples(samples: [f32; S]) -> Self {
         Self { samples }
     }

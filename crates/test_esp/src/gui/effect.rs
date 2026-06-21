@@ -1,7 +1,12 @@
 use core::sync::atomic::Ordering;
 
+use alloc::string::{String, ToString};
 use atomic::Atomic;
+use bumpalo::Bump;
+use codespan_reporting::diagnostic::Diagnostic;
 use esp_println::println;
+use rpds::List;
+use synth::wavetable::Wavetable;
 
 use crate::{
     gui::{
@@ -11,7 +16,8 @@ use crate::{
     },
     input::encoder,
     storage::{self, Files, LoadError, Storage, key_from_name},
-    text::{ByteString, Name},
+    text::{ByteString, Name, fixed_str_to_str},
+    usb,
 };
 
 static PANEL: Atomic<encoder::Panel> = Atomic::new(encoder::Panel::CutoffResonance);
@@ -21,6 +27,7 @@ pub fn current_panel() -> encoder::Panel {
 }
 
 pub(super) enum Effect {
+    BuildWavetable(Name, String),
     Save(Name, [u8; editor::MAX_SIZE]),
     Load(Name),
     Delete(Name),
@@ -31,6 +38,7 @@ pub(super) enum Effect {
 
 pub(super) struct Context {
     pub storage: Storage,
+    pub ast_arena: Bump,
 }
 
 impl Context {
@@ -126,7 +134,65 @@ impl embedded_gui::effect::Effect for Effect {
                 PANEL.store(panel, Ordering::Relaxed);
                 return None;
             }
+
+            Effect::BuildWavetable(name, source_code) => {
+                match calc::parser::parse(&context.ast_arena, &source_code) {
+                    Ok(expr) => {
+                        match Wavetable::try_from_fn(|x| {
+                            let outer_scope = rpds::list![
+                                rpds::ht_map!["x" => calc::interpreter::Value::Number(x)]
+                            ];
+
+                            let (dynamic_value, _) =
+                                calc::interpreter::eval(&expr, outer_scope).unwrap();
+
+                            match dynamic_value {
+                                calc::interpreter::Value::Number(value) => Ok(value),
+                                _ => Err(calc::interpreter::diagnostic::Error::new(
+                                    calc::interpreter::diagnostic::ErrorKind::Expected(
+                                        calc::interpreter::Type::Number,
+                                        dynamic_value,
+                                    ),
+                                    (0, source_code.len()),
+                                )),
+                            }
+                        }) {
+                            Ok(wavetable) => {
+                                usb::set_wavetable(wavetable);
+
+                                Msg::WavetableBuilt(Ok(()))
+                            }
+                            Err(error) => {
+                                let diagnostic: Diagnostic<()> = error.into();
+                                let error_text =
+                                    display_diagnostic(diagnostic, &name, &source_code);
+
+                                Msg::WavetableBuilt(Err(error_text))
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let diagnostic: Diagnostic<()> = error.into();
+                        let error_text = display_diagnostic(diagnostic, &name, &source_code);
+
+                        Msg::WavetableBuilt(Err(error_text))
+                    }
+                }
+            }
         };
+        context.ast_arena.reset();
         Some(msg)
     }
+}
+
+fn display_diagnostic(diagnostic: Diagnostic<()>, name: &Name, source_code: &str) -> String {
+    codespan_reporting::term::emit_into_string(
+        &codespan_reporting::term::Config::default(),
+        &codespan_reporting::files::SimpleFile::new(
+            fixed_str_to_str(name).unwrap_or("<corrupted>"),
+            source_code,
+        ),
+        &diagnostic,
+    )
+    .unwrap_or("Error displaying diagnostic".to_string())
 }

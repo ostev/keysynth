@@ -1,4 +1,10 @@
-use embedded_graphics::mono_font::{MonoTextStyleBuilder, ascii::FONT_6X12};
+use embedded_graphics::{
+    mono_font::{
+        MonoTextStyleBuilder,
+        ascii::{FONT_6X12, FONT_10X20},
+    },
+    text::renderer::TextRenderer,
+};
 use embedded_gui::{
     component::Component,
     interactive::FocusState,
@@ -20,7 +26,7 @@ use crate::{
     text::{Name, fixed_str, name_to_string},
 };
 
-pub const VISIBLE_FILES: usize = 10;
+pub const VISIBLE_FILES: usize = 8;
 
 #[derive(Reactive)]
 pub struct FileList<'a> {
@@ -149,58 +155,63 @@ impl<'a>
         let index = *self.index;
 
         v.view(
-            Direction::Horizontal,
-            [v.interactive(
-                select_file::FocusKey::FileList(*self.index),
-                event::on_keydown(
-                    move |key| match key {
-                        Key::Standard(StandardKey::Down) => {
-                            Some(select_file::Msg::ScrollFileList(ScrollDirection::Down))
-                        }
-                        Key::Standard(StandardKey::Up) => {
-                            Some(select_file::Msg::ScrollFileList(ScrollDirection::Up))
-                        }
-                        Key::Standard(StandardKey::Enter) => {
-                            Some(select_file::Msg::SelectFile(index))
-                        }
-                        _ => None,
-                    },
-                    move |key| match key {
-                        Key::Standard(StandardKey::Backspace) => {
-                            Some(select_file::Msg::DeleteFile(index))
-                        }
-                        _ => None,
-                    },
-                ),
-                move |focus_state| {
-                    let font_style = {
-                        let builder = MonoTextStyleBuilder::new()
-                            .font(&FONT_6X12)
-                            .text_color(colors::TEXT);
+            Direction::Vertical,
+            [
+                v.spacer(),
+                v.interactive(
+                    select_file::FocusKey::FileList(*self.index),
+                    event::on_keydown(
+                        move |key| match key {
+                            Key::Standard(StandardKey::Down) => {
+                                Some(select_file::Msg::ScrollFileList(ScrollDirection::Down))
+                            }
+                            Key::Standard(StandardKey::Up) => {
+                                Some(select_file::Msg::ScrollFileList(ScrollDirection::Up))
+                            }
+                            Key::Standard(StandardKey::Enter) => {
+                                Some(select_file::Msg::SelectFile(index))
+                            }
+                            _ => None,
+                        },
+                        move |key| match key {
+                            Key::Standard(StandardKey::Backspace) => {
+                                Some(select_file::Msg::DeleteFile(index))
+                            }
+                            _ => None,
+                        },
+                    ),
+                    move |focus_state| {
+                        let font_style = {
+                            let builder = MonoTextStyleBuilder::new()
+                                .font(&FONT_10X20)
+                                .text_color(colors::TEXT);
 
-                        let with_underline = match *focus_state {
-                            FocusState::Focused => builder.underline(),
-                            FocusState::Unfocused => builder,
+                            let with_underline = match *focus_state {
+                                FocusState::Focused => builder.underline(),
+                                FocusState::Unfocused => builder,
+                            };
+
+                            with_underline.build()
                         };
 
-                        with_underline.build()
-                    };
-
-                    v.group_fill(
-                        Direction::Horizontal,
-                        [
-                            v.primitive(
-                                Sizing::Intrinsic,
-                                OwnedText {
-                                    content: text,
-                                    font_style: Signal::constant(font_style),
-                                },
-                            ),
-                            v.spacer(),
-                        ],
-                    )
-                },
-            )],
+                        v.group(
+                            Direction::Horizontal,
+                            Sizing::Constrained(font_style.line_height() as u16),
+                            [
+                                v.primitive(
+                                    Sizing::Intrinsic,
+                                    OwnedText {
+                                        content: text,
+                                        font_style: Signal::constant(font_style),
+                                    },
+                                ),
+                                v.spacer(),
+                            ],
+                        )
+                    },
+                ),
+                v.spacer(),
+            ],
         )
         .with_background(colors::PURPLE)
     }

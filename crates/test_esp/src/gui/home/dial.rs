@@ -130,12 +130,15 @@ impl<'a>
         v.view(
             Direction::Vertical,
             [
-                v.primitive(
-                    Sizing::Intrinsic,
-                    Dial {
-                        progress: self.info.progress,
-                        color: self.color.clone(),
-                    },
+                v.centered(
+                    Direction::Horizontal,
+                    v.primitive(
+                        Sizing::Intrinsic,
+                        Dial {
+                            progress: self.info.progress,
+                            color: self.color.clone(),
+                        },
+                    ),
                 ),
                 // Label centered below the dial
                 v.centered(

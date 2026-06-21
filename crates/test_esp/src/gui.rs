@@ -4,6 +4,7 @@ use core::{
 };
 
 use alloc::{borrow::Cow, format, string::String};
+use bumpalo::Bump;
 use embassy_executor::task;
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_time::{Duration, Instant};
@@ -163,6 +164,7 @@ enum AnyPrimitive<'a> {
     OwnedText4(OwnedText<display::Color, 4>),
     OwnedTextPreview(OwnedText<display::Color, { home::PREVIEW_LINE_LENGTH }>),
     OwnedTextName(OwnedText<display::Color, { NAME_SIZE }>),
+    Message(message::View<'a>),
     LineEditor(LineEditor<'a, { NAME_SIZE }>),
     Dial(Dial),
 }
@@ -220,6 +222,14 @@ struct Gui {
     editor: Source<Option<editor::State>>,
 
     message: Source<Option<Message>>,
+    message_scroll: Source<u16>,
+}
+
+impl Gui {
+    fn set_message(&mut self, message: Option<Message>) {
+        self.message_scroll.set(0);
+        self.message.set(message);
+    }
 }
 
 impl App for Gui {
@@ -238,6 +248,7 @@ impl App for Gui {
             page: Source::new(Page::Home(Home::default())),
             // page: Source::new(Page::SelectFile(SelectFile::default())),
             message: Source::new(None),
+            message_scroll: Source::new(0),
 
             synth_parameters: Source::new(synth::Parameters::default()),
             new_note: Source::new(None),
@@ -253,18 +264,46 @@ impl App for Gui {
         Rgb565::BLACK
     }
 
-    fn default_event_handler(&self, event: Event) -> Option<Msg> {
+    fn global_event_handler(&self, event: Event) -> Option<Msg> {
         event::on_keydown(
-            |_| None,
+            |key| match key {
+                Key::Standard(StandardKey::Down) => {
+                    if self.message.is_some() {
+                        Some(Msg::ScrollMessage(1))
+                    } else {
+                        None
+                    }
+                }
+                Key::Standard(StandardKey::Up) => {
+                    if self.message.is_some() {
+                        Some(Msg::ScrollMessage(-1))
+                    } else {
+                        None
+                    }
+                }
+                _ => {
+                    if self.message.is_some() {
+                        Some(Msg::ClearMessage)
+                    } else {
+                        None
+                    }
+                }
+            },
             |key| match key {
                 Key::Standard(StandardKey::E) => match *self.page {
                     Page::Editor => Some(Msg::ChangePage(Page::Home(home::Home::default()))),
                     _ => self.editor.as_ref().map(|_| Msg::ChangePage(Page::Editor)),
                 },
+                Key::Standard(StandardKey::H) => {
+                    Some(Msg::ChangePage(Page::Home(home::Home::default())))
+                }
+
                 Key::Standard(StandardKey::O) => {
                     Some(Msg::ChangePage(Page::SelectFile(SelectFile::default())))
                 }
                 Key::Standard(StandardKey::S) => Some(Msg::SaveFile),
+                Key::Standard(StandardKey::B) => Some(Msg::BuildWavetable),
+
                 _ => None,
             },
         )(event)
@@ -279,17 +318,17 @@ impl App for Gui {
             }
         }
 
-        const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_millis(500);
+        // const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_secs(10);
 
-        let is_message_old = self
-            .message
-            .as_ref()
-            .map(|message| message.timestamp.elapsed() > MESSAGE_DISPLAY_DURATION)
-            .unwrap_or(false);
+        // let is_message_old = self
+        //     .message
+        //     .as_ref()
+        //     .map(|message| message.timestamp.elapsed() > MESSAGE_DISPLAY_DURATION)
+        //     .unwrap_or(false);
 
-        if is_message_old {
-            self.message.set(None);
-        }
+        // if is_message_old {
+        //     self.message.set(None);
+        // }
 
         match msg {
             Msg::Page(page_msg) => {
@@ -308,6 +347,15 @@ impl App for Gui {
                     _ => Change::new(),
                 });
             }
+
+            Msg::ScrollMessage(delta) => {
+                self.message_scroll
+                    .set_with(|scroll| (*scroll as i16 + delta as i16).try_into().unwrap_or(0));
+            }
+            Msg::ClearMessage => {
+                self.set_message(None);
+            }
+
             Msg::LoadCompleted(result) => match result {
                 Ok(source) => {
                     self.editor
@@ -320,7 +368,7 @@ impl App for Gui {
                         "An error occurred while loading from flash! Please try again. The error is: {:?}",
                         error
                     ));
-                    self.message.set(Some(Message::now(text)));
+                    self.set_message(Some(Message::now(text)));
                 }
             },
             Msg::SaveCompleted(result) => match result {
@@ -333,10 +381,10 @@ impl App for Gui {
                                     "Saved to {}!",
                                     name
                                 ));
-                                self.message.set(Some(Message::now(message)));
+                                self.set_message(Some(Message::now(message)));
                             }
                             Err(_) => {
-                                self.message.set(Some(Message::now(Cow::Borrowed(
+                                self.set_message(Some(Message::now(Cow::Borrowed(
                                     "The name of the file that was just saved to flash is invalid! Corruption has occured.",
                                 ))))
                             }
@@ -348,7 +396,7 @@ impl App for Gui {
                         "An error occurred while saving to flash! Please try again. The error is: {:?}",
                         error
                     ));
-                    self.message.set(Some(Message::now(text)));
+                    self.set_message(Some(Message::now(text)));
                 }
             },
             Msg::DeleteCompleted(result) => match result {
@@ -358,7 +406,7 @@ impl App for Gui {
                         "An error occurred while deleting! Please try again. The error is: {:?}",
                         error
                     ));
-                    self.message.set(Some(Message::now(text)));
+                    self.set_message(Some(Message::now(text)));
                 }
             },
             Msg::RenameCompleted(result) => match result {
@@ -368,7 +416,7 @@ impl App for Gui {
                         "An error occurred while renaming! Please try again. The error is: {:?}",
                         error
                     ));
-                    self.message.set(Some(Message::now(text)));
+                    self.set_message(Some(Message::now(text)));
                 }
             },
 
@@ -385,6 +433,15 @@ impl App for Gui {
             Msg::SetNewNote(note) => {
                 self.new_note.set(Some((note, Instant::now())));
             }
+            Msg::WavetableBuilt(result) => match result {
+                Ok(_) => {
+                    self.message
+                        .set(Some(Message::now(Cow::Borrowed(&"Wavetable built!"))));
+                }
+                Err(error_text) => {
+                    self.set_message(Some(Message::now(Cow::Owned(error_text))));
+                }
+            },
 
             Msg::SaveFile => {
                 if let Some(editor) = self.editor.as_ref() {
@@ -400,9 +457,21 @@ impl App for Gui {
                                 "A serialization error occurred while saving! Please try again.",
                             );
 
-                            self.message.set(Some(Message::now(text)));
+                            self.set_message(Some(Message::now(text)));
                         }
                     }
+                }
+            }
+
+            Msg::BuildWavetable => {
+                if let Some(editor) = self.editor.as_ref() {
+                    return Change::new().with_effect(Effect::BuildWavetable(
+                        editor.name().clone(),
+                        unsafe {
+                            // SAFETY: the editor can only ever contain ASCII, so this is safe.
+                            editor.to_string_unchecked()
+                        },
+                    ));
                 }
             }
         };
@@ -423,25 +492,14 @@ impl App for Gui {
         Self::AnyPrimitive<'a>,
     > {
         if let Some(message) = self.message.option_signal_ref() {
-            println!(
-                "Message: {:?}",
-                message.map_ref(&v.bump, |message| message.text.clone())
-            );
             v.view(
                 Direction::Horizontal,
-                [v.background(
-                    Sizing::Fill,
-                    Signal::constant(colors::BACKGROUND_LIGHT),
-                    [v.middle(v.primitive(
-                        Sizing::Intrinsic,
-                        Text {
-                            content: message.map_ref(&v.bump, |message| message.text.clone()),
-                            font_style: Signal::constant(MonoTextStyle::new(
-                                &FONT_10X20,
-                                colors::TEXT,
-                            )),
-                        },
-                    ))],
+                [v.primitive(
+                    Sizing::Intrinsic,
+                    message::View {
+                        message,
+                        scroll: self.message_scroll.signal(),
+                    },
                 )],
             )
         } else {
@@ -485,19 +543,37 @@ enum PageMsg {
 }
 
 enum Msg {
+    /// A message directed toward a sub-page
     Page(PageMsg),
 
+    ClearMessage,
+    ScrollMessage(i16),
+
+    /// Save the current editor to flash
     SaveFile,
 
+    /// Build the wavetable in the current editor
+    BuildWavetable,
+    /// The wavetable has been built
+    WavetableBuilt(Result<(), String>),
+
+    /// The editor has been saved to flash
     SaveCompleted(Result<Name, LoadError>),
+    /// A file has been loaded from flash
     DeleteCompleted(Result<(), LoadError>),
+    /// A file on flash has been renamed
     RenameCompleted(Result<(), LoadError>),
+    /// A file has been loaded from flash
     LoadCompleted(Result<editor::source::Source, LoadError>),
 
+    /// The synth parameters have changed, so we need to update the UI.
     SetSynthParameters(synth::Parameters),
+    /// The newest note has changed, so we need to update the UI.
     SetNewNote(Note),
 
+    /// Change the current focus to another element
     ChangeFocus(FocusKey),
+    /// Change the current page
     ChangePage(Page),
 }
 
@@ -536,6 +612,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
 
     let mut effect_context = effect::Context {
         storage: Storage::new(storage),
+        ast_arena: Bump::new(),
     };
 
     let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, true);
@@ -562,7 +639,6 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 .await;
             }
             Either3::Second(synth_parameters) => {
-                // println!("param update!!!");
                 embedded_gui::app::dispatch_msg(
                     &mut gui,
                     &mut effect_context,

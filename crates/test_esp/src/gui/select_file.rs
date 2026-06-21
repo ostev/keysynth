@@ -2,9 +2,11 @@ use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii};
 use embedded_gui::{
     app::Change,
     component::{Component, button::Button, group::Group},
+    interactive::FocusState,
     layout::{Direction, IntrinsicSize, Sizing},
-    primitive::text::Text,
+    primitive::{spacer::Spacer, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
+    size::Size,
     view::View,
 };
 use esp_println::println;
@@ -45,8 +47,6 @@ pub enum Msg {
     DeleteFile(usize),
 
     FilesReceived(Result<storage::Files, LoadError>),
-
-    NoOp,
 }
 
 #[derive(Reactive, embedded_gui::app::State)]
@@ -104,8 +104,6 @@ impl SelectFile {
             Msg::FilesReceived(files) => {
                 self.files.set(files.map(Files::sorted_by_most_recent));
             }
-
-            Msg::NoOp => {}
         }
 
         Change::new()
@@ -140,8 +138,6 @@ impl SelectFile {
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
     > {
-        const BAR_HEIGHT: u16 = 40;
-
         let file_name = self.line_editor.as_fixed_byte_string();
         let num_files = self.files.as_ref().map(|files| files.len()).unwrap_or(0);
 
@@ -186,31 +182,41 @@ impl SelectFile {
                                 _ => line::Msg::from_event(event)
                                     .map(|msg| Msg::LineEditor(msg).into()),
                             },
-                            |_| {
-                                v.component(
-                                    Sizing::Constrained(BAR_HEIGHT),
-                                    Group::zero(Signal::constant(Direction::Horizontal)),
+                            |focus_state| {
+                                v.group(
+                                    Direction::Vertical,
+                                    Sizing::Constrained(40),
                                     [
                                         v.primitive(
                                             Sizing::Intrinsic,
                                             Text {
                                                 content: SignalRef::constant(&"New file: "),
-                                                font_style: Signal::constant(
-                                                    MonoTextStyleBuilder::new()
-                                                        .font(&ascii::FONT_6X13_ITALIC)
-                                                        .text_color(colors::TEXT)
-                                                        .underline_with_color(colors::PURPLE)
-                                                        .build(),
-                                                ),
+                                                font_style: focus_state.map(|focus_state| {
+                                                    let builder = MonoTextStyleBuilder::new()
+                                                        .font(&ascii::FONT_10X20)
+                                                        .text_color(colors::TEXT);
+
+                                                    match focus_state {
+                                                        FocusState::Focused => builder
+                                                            .underline_with_color(colors::TEXT)
+                                                            .build(),
+                                                        FocusState::Unfocused => builder.build(),
+                                                    }
+                                                }),
                                             },
                                         ),
-                                        v.spacer(),
                                         v.primitive(
-                                            Sizing::Intrinsic,
+                                            Sizing::Fill,
                                             LineEditor::new(self.line_editor.signal_ref()),
                                         ),
                                     ],
                                 )
+                            },
+                        ),
+                        v.primitive(
+                            Sizing::Intrinsic,
+                            Spacer {
+                                size: Signal::constant(Size::new(0, 20)),
                             },
                         ),
                         v.component(
@@ -218,15 +224,6 @@ impl SelectFile {
                             FileList {
                                 files: self.files.signal_ref(),
                                 scroll: self.scroll.signal(),
-                            },
-                            [],
-                        ),
-                        v.component(
-                            Sizing::Constrained(BAR_HEIGHT),
-                            TextBar {
-                                text: SignalRef::constant(
-                                    &"[enter] to select, [super + backspace] to delete",
-                                ),
                             },
                             [],
                         ),

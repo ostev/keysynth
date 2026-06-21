@@ -1,6 +1,6 @@
 use embassy_executor::{SendSpawner, Spawner, task};
 
-use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::{blocking_mutex::Mutex, signal::Signal};
 use esp_hal::{
     interrupt::software::SoftwareInterrupt,
     otg_fs::{self, Usb},
@@ -9,6 +9,7 @@ use esp_hal::{
 use esp_println::println;
 use esp_sync::RawMutex;
 use static_cell::StaticCell;
+use synth::wavetable::Wavetable;
 use usb_device::{
     LangID,
     bus::UsbBusAllocator,
@@ -24,7 +25,7 @@ use usbd_hid::{
 };
 
 use crate::{
-    audio,
+    audio::{self, WAVETABLE_SIZE},
     concurrency::try_receive_all,
     usb::{audio::SAMPLE_RATE, hid::UsbKeyboardStatus},
 };
@@ -117,6 +118,12 @@ pub unsafe fn set_keyboard_status(status: UsbKeyboardStatus) {
     }
 }
 
+static WAVETABLE: Signal<RawMutex, Wavetable<{ WAVETABLE_SIZE }>> = Signal::new();
+
+pub fn set_wavetable(wavetable: Wavetable<WAVETABLE_SIZE>) {
+    WAVETABLE.signal(wavetable);
+}
+
 pub const STACK_SIZE: usize = 48_000;
 
 pub fn device_loop(mut hardware: UsbHardware) -> ! {
@@ -131,6 +138,11 @@ pub fn device_loop(mut hardware: UsbHardware) -> ! {
         // Apply the next 4 events
         let audio_events = try_receive_all(&audio_receiver).take(4);
         audio.apply_events(audio_events);
+
+        // Update the wavetable if there's a new one
+        if let Some(wavetable) = WAVETABLE.try_take() {
+            audio.set_wavetable(wavetable);
+        }
 
         if hardware
             .device
