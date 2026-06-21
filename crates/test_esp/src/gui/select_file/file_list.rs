@@ -3,12 +3,13 @@ use embedded_gui::{
     component::Component,
     interactive::FocusState,
     layout::{Direction, IntrinsicSize, Sizing},
-    primitive::owned_text::OwnedText,
+    primitive::{owned_text::OwnedText, spacer::Spacer},
     signal::{Reactive, Signal, SignalRef},
     size::Size,
     view::Children,
 };
 
+use itertools::Itertools;
 use keyboard_protocol::{Key, StandardKey};
 
 use crate::{
@@ -80,6 +81,7 @@ impl<'a>
                     [],
                 )
             })
+            .pad_using(VISIBLE_FILES, |_| v.spacer())
             .collect::<heapless::Vec<_, { VISIBLE_FILES }>>()
             .into_array::<VISIBLE_FILES>()
         else {

@@ -237,7 +237,7 @@ pub struct Driver {
 
     orientation: Orientation,
     framebuffer: Box<Framebuffer>,
-    dirty_rows: [bool; WIDTH],
+    dirty_rows: [bool; HEIGHT],
 }
 
 type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
@@ -246,7 +246,7 @@ type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
     BigEndian,
     WIDTH,
     HEIGHT,
-    { buffer_size::<Rgb565>(HEIGHT, WIDTH) },
+    { buffer_size::<Rgb565>(WIDTH, HEIGHT) },
 >;
 
 pub const WIDTH: usize = 280;
@@ -266,7 +266,7 @@ impl Driver {
             hardware: driver_hardware,
             orientation,
             framebuffer: Box::new(Framebuffer::new()),
-            dirty_rows: [false; WIDTH],
+            dirty_rows: [false; HEIGHT],
         };
 
         driver.hardware.reset();
@@ -303,6 +303,8 @@ impl Driver {
         let bytes = self.framebuffer.data();
 
         self.hardware.write_data(bytes).await;
+
+        self.clear_dirty();
     }
 
     fn mark_dirty(&mut self, area: &Rectangle) {
@@ -319,15 +321,19 @@ impl Driver {
         }
     }
 
+    fn clear_dirty(&mut self) {
+        self.dirty_rows.fill(false);
+    }
+
     pub async fn partial_flush(&mut self) {
         let (width, height) = self.orientation.dimensions();
 
-        let bytes_per_row = width * mem::size_of::<<Color as PixelColor>::Raw>();
+        let bytes_per_row = WIDTH * mem::size_of::<<Color as PixelColor>::Raw>();
 
         let mut row = 0;
         println!("Partial flush!");
 
-        while row < height {
+        while row < HEIGHT {
             if self.dirty_rows[row] {
                 let start = row;
 
@@ -349,7 +355,8 @@ impl Driver {
 
                 println!("WINDOW SET");
 
-                let bytes = &self.framebuffer.data()[start * bytes_per_row..=end * bytes_per_row];
+                let bytes =
+                    &self.framebuffer.data()[start * bytes_per_row..(end + 1) * bytes_per_row];
 
                 self.hardware.write_data(bytes).await;
 
@@ -358,6 +365,8 @@ impl Driver {
 
             row += 1;
         }
+
+        self.clear_dirty();
     }
 }
 

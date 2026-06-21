@@ -36,6 +36,7 @@ struct TimestampedEdit {
     edit: Edit,
 }
 
+#[derive(Clone)]
 pub struct History {
     history: CircularBuffer<MAX_UNDO, TimestampedEdit>,
     redo_history: CircularBuffer<MAX_REDO, TimestampedEdit>,

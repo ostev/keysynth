@@ -81,7 +81,7 @@ impl Home {
     pub fn view<'a>(
         &'a self,
         v: &'a embedded_gui::view::Factory<Event, gui::Msg, gui::FocusKey>,
-        editor: SignalRef<'a, editor::State>,
+        editor: SignalRef<'a, Option<editor::State>>,
         synth_parameters: Signal<synth::Parameters>,
         new_note: Signal<Option<Note>>,
     ) -> View<
@@ -225,8 +225,16 @@ impl Home {
                                     ),
                                 ),
                                 {
-                                    let preview_text = editor
-                                        .map(|editor| editor.get_preview::<PREVIEW_LINE_LENGTH>());
+                                    let preview_text = editor.map(|option_editor| {
+                                        option_editor
+                                            .as_ref()
+                                            .map(|editor| {
+                                                editor.get_preview::<PREVIEW_LINE_LENGTH>()
+                                            })
+                                            .unwrap_or(
+                                                heapless::format!("no program loaded").unwrap(),
+                                            )
+                                    });
 
                                     v.centered(
                                         Direction::Horizontal,

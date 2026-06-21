@@ -17,6 +17,7 @@ use crate::{
 /// Each program can be a maximum of 2KB
 pub const MAX_SIZE: usize = 2 * 1024;
 
+#[derive(Clone)]
 pub struct Source {
     pub name: Name,
     // TODO: replace with a gap buffer for better insert performance

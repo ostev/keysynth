@@ -13,6 +13,7 @@ use crate::{
     gui::{
         self,
         editor::{
+            MAX_SIZE,
             clipboard::Clipboard,
             history::{self, History},
             position::{Direction, Position, SelectionRange},
@@ -25,6 +26,7 @@ use crate::{
     text::{ByteChar, ByteString, Name, fixed_str},
 };
 
+#[derive(Clone)]
 pub struct EditorState {
     pub(super) source: Source,
     pub(super) cursor: Position,
@@ -76,6 +78,14 @@ impl EditorState {
                 .unwrap_or(heapless::format!("<corrupted>").unwrap())
             })
             .unwrap_or(heapless::format!("...").unwrap())
+    }
+
+    pub fn serialize(&self) -> Result<[u8; MAX_SIZE], postcard::Error> {
+        self.source.serialize()
+    }
+
+    pub fn name(&self) -> &Name {
+        &self.source.name
     }
 
     pub unsafe fn to_string_unchecked(&self) -> alloc::string::String {
@@ -148,19 +158,6 @@ impl EditorState {
                     self.source.apply(edit);
                 }
             }
-            Msg::Save => match self.source.serialize() {
-                Ok(serialized) => {
-                    return Change::new()
-                        .with_effect(Effect::Save(self.source.name.clone(), serialized));
-                }
-                Err(_) => {
-                    let text = Cow::Borrowed(
-                        "A serialization error occurred while saving! Please try again.",
-                    );
-
-                    self.message = Some(Message::now(text))
-                }
-            },
 
             Msg::NoOp => {}
         };
@@ -326,9 +323,6 @@ pub enum Msg {
     // History
     Undo,
     Redo,
-
-    // Saving
-    Save,
 
     NoOp,
 }

@@ -10,7 +10,7 @@ use embassy_time::{Duration, Instant};
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
-    mono_font::MonoTextStyleBuilder,
+    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_10X20},
     pixelcolor::{Rgb565, RgbColor},
     primitives::Rectangle,
 };
@@ -28,7 +28,10 @@ use embedded_gui::{
 use esp_println::println;
 use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
-use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus, Modifier, StandardKey::P};
+use keyboard_protocol::{
+    Key, KeyboardDiff, KeyboardStatus, Modifier,
+    StandardKey::{self, P},
+};
 
 mod background;
 pub mod colors;
@@ -55,7 +58,10 @@ use crate::{
             dial::{self, Dial},
         },
         message::Message,
-        select_file::file_list::{FileEntry, FileList},
+        select_file::{
+            SelectFile,
+            file_list::{FileEntry, FileList},
+        },
         text_bar::{OwnedTextBar, TextBar},
     },
     input::{
@@ -74,14 +80,6 @@ mod input_channel {
 }
 
 pub use input_channel::sender as input_sender;
-
-// mod synth_paremeters_channel {
-//     use crate::channel;
-
-//     channel!(synth::Parameters);
-// }
-
-// pub use synth_paremeters_channel::sender as synth_parameters_sender;
 
 static SYNTH_PARAMETERS: embassy_sync::signal::Signal<RawMutex, synth::Parameters> =
     embassy_sync::signal::Signal::new();
@@ -157,6 +155,7 @@ enum AnyPrimitive<'a> {
     EditorView(editor::View<'a>),
     Spacer(embedded_gui::primitive::spacer::Spacer),
     TextStr(Text<'a, display::Color, &'a str>),
+    TextCow(Text<'a, display::Color, Cow<'a, str>>),
     OwnedText4(OwnedText<display::Color, 4>),
     OwnedTextPreview(OwnedText<display::Color, { home::PREVIEW_LINE_LENGTH }>),
     OwnedTextName(OwnedText<display::Color, { NAME_SIZE }>),
@@ -165,9 +164,9 @@ enum AnyPrimitive<'a> {
 }
 
 enum Page {
-    SelectFile(Source<select_file::SelectFile>),
+    SelectFile(select_file::SelectFile),
     Editor,
-    Home(Source<home::Home>),
+    Home(home::Home),
 }
 
 // TODO: implement derive macro for enums
@@ -188,7 +187,7 @@ struct Gui {
     synth_parameters: Source<synth::Parameters>,
     new_note: Source<Option<(Note, Instant)>>,
 
-    editor: Source<editor::State>,
+    editor: Source<Option<editor::State>>,
 
     message: Source<Option<Message>>,
 }
@@ -197,7 +196,7 @@ impl Gui {
     fn set_page(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
         let (is_capturing, change) = match &page {
             Page::SelectFile(_) => (
-                false,
+                true,
                 Change::new()
                     .with_effect(Effect::FetchFiles)
                     .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
@@ -232,12 +231,12 @@ impl App for Gui {
 
     fn new() -> Self {
         Self {
-            page: Source::new(Page::Home(Source::new(Home::default()))),
+            page: Source::new(Page::Home(Home::default())),
             message: Source::new(None),
 
             synth_parameters: Source::new(synth::Parameters::default()),
             new_note: Source::new(None),
-            editor: Source::new(editor::State::default()),
+            editor: Source::new(None),
         }
     }
 
@@ -249,13 +248,54 @@ impl App for Gui {
         Rgb565::BLACK
     }
 
+    fn default_event_handler(&self, event: Event) -> Option<Msg> {
+        event::on_keydown(
+            |_| None,
+            |key| match key {
+                Key::Standard(StandardKey::E) => {
+                    self.editor.as_ref().map(|_| Msg::ChangePage(Page::Editor))
+                }
+                Key::Standard(StandardKey::O) => {
+                    Some(Msg::ChangePage(Page::SelectFile(SelectFile::default())))
+                }
+                Key::Standard(StandardKey::S) => Some(Msg::SaveFile),
+                _ => None,
+            },
+        )(event)
+    }
+
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
+        const NEW_NOTE_DISPLAY_DURATION: Duration = Duration::from_secs(1);
+
+        if let Some((_, start)) = *self.new_note {
+            if start.elapsed() > NEW_NOTE_DISPLAY_DURATION {
+                self.new_note.set(None);
+            }
+        }
+
+        const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_secs(2);
+
+        let is_message_old = self
+            .message
+            .as_ref()
+            .map(|message| message.timestamp.elapsed() > MESSAGE_DISPLAY_DURATION)
+            .unwrap_or(false);
+
+        if is_message_old {
+            self.message.set(None);
+        }
+
         match (&mut *self.page, msg) {
             (Page::Home(state), Msg::Home(home_msg)) => {
                 return state.update(|home| home.update(home_msg));
             }
             (Page::Editor, Msg::Editor(editor_msg)) => {
-                return self.editor.update(|editor| editor.update(editor_msg));
+                return self.editor.update(|editor| {
+                    editor
+                        .as_mut()
+                        .map(|editor| editor.update(editor_msg))
+                        .unwrap_or(Change::new())
+                });
             }
             (Page::SelectFile(state), Msg::SelectFile(home_msg)) => {
                 return state.update(|home| home.update(home_msg));
@@ -264,7 +304,7 @@ impl App for Gui {
             (_, Msg::LoadCompleted(result)) => match result {
                 Ok(source) => {
                     self.editor
-                        .update(|editor| *editor = editor::State::new(source));
+                        .update(|editor| *editor = Some(editor::State::new(source)));
 
                     return self.set_page(Page::Editor);
                 }
@@ -326,6 +366,9 @@ impl App for Gui {
             (_, Msg::ChangeFocus(focus)) => {
                 return Change::new().with_focus_key(focus);
             }
+            (_, Msg::ChangePage(page)) => {
+                return self.set_page(page);
+            }
 
             (_, Msg::SetSynthParameters(parameters)) => {
                 self.synth_parameters.set(parameters);
@@ -334,15 +377,25 @@ impl App for Gui {
                 self.new_note.set(Some((note, Instant::now())));
             }
 
-            _ => {}
-        }
+            (_, Msg::SaveFile) => {
+                if let Some(editor) = self.editor.as_ref() {
+                    match editor.serialize() {
+                        Ok(serialized) => {
+                            return Change::new()
+                                .with_effect(Effect::Save(editor.name().clone(), serialized));
+                        }
+                        Err(_) => {
+                            let text = Cow::Borrowed(
+                                "A serialization error occurred while saving! Please try again.",
+                            );
 
-        const NEW_NOTE_DISPLAY_DURATION: Duration = Duration::from_secs(1);
-
-        if let Some((_, start)) = *self.new_note {
-            if start.elapsed() > NEW_NOTE_DISPLAY_DURATION {
-                self.new_note.set(None);
+                            self.message.set(Some(Message::now(text)));
+                        }
+                    }
+                }
             }
+
+            _ => {}
         }
 
         return Change::new();
@@ -360,49 +413,50 @@ impl App for Gui {
         Self::AnyComponent<'a>,
         Self::AnyPrimitive<'a>,
     > {
-        match &*self.page {
-            Page::Home(home) => home.view(
-                v,
-                self.editor.signal_ref(),
-                self.synth_parameters.signal(),
-                self.new_note
-                    .signal()
-                    .map(|new_note| new_note.map(|(note, _)| note)),
-            ),
-            // Page::Home(_) => {
-            //     println!("Rendering home page");
+        if let Some(message) = self.message.option_signal_ref() {
+            v.view(
+                Direction::Horizontal,
+                [v.background(
+                    Sizing::Fill,
+                    Signal::constant(colors::BACKGROUND_LIGHT),
+                    [v.middle(v.primitive(
+                        Sizing::Fill,
+                        Text {
+                            content: message.map_ref(&v.bump, |message| message.text.clone()),
+                            font_style: Signal::constant(MonoTextStyle::new(
+                                &FONT_10X20,
+                                colors::TEXT,
+                            )),
+                        },
+                    ))],
+                )],
+            )
+        } else {
+            match &*self.page {
+                Page::Home(home) => home.view(
+                    v,
+                    self.editor.signal_ref(),
+                    self.synth_parameters.signal(),
+                    self.new_note
+                        .signal()
+                        .map(|new_note| new_note.map(|(note, _)| note)),
+                ),
+                Page::SelectFile(state) => state.view(v),
+                Page::Editor => {
+                    let editor = v.interactive(
+                        FocusKey::Editor,
+                        |event| editor::Msg::from_event(event).map(Msg::Editor),
+                        |_| {
+                            if let Some(editor) = self.editor.option_signal_ref() {
+                                v.component(Sizing::Fill, editor::Editor::new(editor), [])
+                            } else {
+                                v.spacer()
+                            }
+                        },
+                    );
 
-            //     v.view(
-            //         Direction::Horizontal,
-            //         [v.primitive(
-            //             Sizing::Fill,
-            //             Text {
-            //                 content: SignalRef::constant(&"Home page is under construction!"),
-            //                 font_style: Signal::constant(
-            //                     MonoTextStyleBuilder::new()
-            //                         .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-            //                         .text_color(display::Color::WHITE)
-            //                         .build(),
-            //                 ),
-            //             },
-            //         )],
-            //     )
-            // }
-            Page::SelectFile(state) => state.view(v),
-            Page::Editor => {
-                let editor = v.interactive(
-                    FocusKey::Editor,
-                    |event| editor::Msg::from_event(event).map(Msg::Editor),
-                    |_| {
-                        v.component(
-                            Sizing::Fill,
-                            editor::Editor::new(self.editor.signal_ref()),
-                            [],
-                        )
-                    },
-                );
-
-                v.view(Direction::Vertical, [editor])
+                    v.view(Direction::Vertical, [editor])
+                }
             }
         }
     }
@@ -413,6 +467,8 @@ enum Msg {
     Home(home::Msg),
     SelectFile(select_file::Msg),
 
+    SaveFile,
+
     SaveCompleted(Result<Name, LoadError>),
     DeleteCompleted(Result<(), LoadError>),
     RenameCompleted(Result<(), LoadError>),
@@ -422,6 +478,7 @@ enum Msg {
     SetNewNote(Note),
 
     ChangeFocus(FocusKey),
+    ChangePage(Page),
 }
 
 impl From<editor::Msg> for Msg {
@@ -505,6 +562,6 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
             }
         }
         let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, false);
-        driver.partial_flush().await;
+        driver.full_flush().await;
     }
 }

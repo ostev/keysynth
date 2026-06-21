@@ -2,6 +2,7 @@ use core::fmt::Display;
 
 use crate::text::{ByteStr, ByteString};
 
+#[derive(Clone)]
 pub struct Clipboard {
     text: ByteString,
 }
