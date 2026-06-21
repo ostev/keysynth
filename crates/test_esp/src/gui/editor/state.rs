@@ -43,6 +43,8 @@ pub struct EditorState {
     pub(super) history: History,
     pub(super) message: Option<Message>,
 
+    is_caps_lock: bool,
+
     pub(super) scroll_start: usize,
 }
 
@@ -63,6 +65,8 @@ impl EditorState {
             clipboard: Clipboard::new(),
             history: History::new(cursor),
             message: None,
+
+            is_caps_lock: false,
 
             scroll_start: 0,
         }
@@ -104,24 +108,38 @@ impl EditorState {
         self.clear_message_if_old();
 
         match msg {
+            // Movement
             Msg::MoveInsert(direction) => {
                 self.move_cursor(direction, false);
             }
             Msg::JumpInsert(direction) => {
                 self.jump_cursor(direction, false);
             }
+
+            // Selection
             Msg::MoveSelection(direction) => {
                 self.move_cursor(direction, true);
             }
             Msg::JumpSelection(direction) => {
                 self.jump_cursor(direction, true);
             }
+            Msg::ClearSelection => {
+                self.selection.clear();
+            }
             Msg::SelectAll => self.select_all(),
             Msg::SelectLine => self.select_line(),
+
+            // Insertion
             Msg::Insert(character) => {
                 if self.selection.is_active() {
                     self.delete(false, false);
                 }
+
+                let character = if self.is_caps_lock {
+                    character.to_ascii_uppercase()
+                } else {
+                    character
+                };
 
                 let new_cursor = self.source.insert(character, self.cursor);
 
@@ -133,6 +151,7 @@ impl EditorState {
                 self.cursor = new_cursor;
             }
 
+            // Deletion
             Msg::Backspace => self.delete(false, false),
             Msg::BackspaceLine => self.delete(false, true),
             Msg::ForwardDelete => self.delete(true, false),
@@ -145,6 +164,7 @@ impl EditorState {
                 self.delete(false, false);
             }
 
+            // History
             Msg::Undo => {
                 if let Some((edit, cursor)) = self.history.undo() {
                     self.source.apply(edit);
@@ -162,7 +182,10 @@ impl EditorState {
                 }
             }
 
-            Msg::NoOp => {}
+            // Caps lock
+            Msg::ToggleCapsLock => {
+                self.is_caps_lock = !self.is_caps_lock;
+            }
         };
 
         Change::new()
@@ -238,9 +261,14 @@ impl EditorState {
                     let deletion_cursor = if is_forward {
                         self.cursor
                     } else {
-                        Position {
-                            line: self.cursor.line,
-                            column: self.cursor.column.saturating_sub(1),
+                        if self.cursor.column > 0 {
+                            Position {
+                                line: self.cursor.line,
+                                column: self.cursor.column - 1,
+                            }
+                        } else {
+                            // We're at the start of the line, and we can't backspace here.
+                            return;
                         }
                     };
 
@@ -407,6 +435,7 @@ pub enum Msg {
     JumpSelection(Direction),
     SelectAll,
     SelectLine,
+    ClearSelection,
 
     // Clipboard
     Copy,
@@ -417,7 +446,8 @@ pub enum Msg {
     Undo,
     Redo,
 
-    NoOp,
+    // Caps lock
+    ToggleCapsLock,
 }
 
 impl Msg {
@@ -462,6 +492,8 @@ impl Msg {
                                         Msg::MoveSelection(Direction::Down)
                                     }
                                 }
+
+                                StandardKey::Esc => Msg::ClearSelection,
 
                                 StandardKey::A if is_super => {
                                     if is_shift {
@@ -513,6 +545,10 @@ impl Msg {
                                     }
                                 }
 
+                                // Caps lock
+                                StandardKey::CapsLock => Msg::ToggleCapsLock,
+
+                                // Insertion
                                 _ => {
                                     let to_char = if is_shift {
                                         StandardKey::to_char_upper
