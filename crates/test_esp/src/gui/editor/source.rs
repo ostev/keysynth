@@ -59,31 +59,32 @@ impl Source {
         }
     }
 
-    pub fn delete(&mut self, character: ByteChar, position: Position) -> Position {
-        match character {
-            b'\n' => {
-                if self.lines.len() > 1 {
-                    let removed_line = self.lines.remove(position.line);
+    /// Delete the specified character at the provided cursor position.
+    pub fn delete(&mut self, position: Position) -> Position {
+        if position.column == 0 {
+            if self.lines.len() > 1 {
+                let removed_line = self.lines.remove(position.line);
 
-                    let new_line_index = position.line.saturating_sub(1);
-                    let new_line = &mut self.lines[new_line_index];
-                    new_line.extend_from_slice(&removed_line);
+                let new_line_index = position.line.saturating_sub(1);
+                let new_line = &mut self.lines[new_line_index];
+                // Move the cursor to the point before the merged text
+                let column = new_line.len();
+                // Merge the removed text
+                new_line.extend_from_slice(&removed_line);
 
-                    Position {
-                        line: new_line_index,
-                        column: new_line.len(),
-                    }
-                } else {
-                    position
+                Position {
+                    line: new_line_index,
+                    column,
                 }
-            }
-            _ => {
-                let line = &mut self.lines[position.line];
-
-                line.remove(position.column);
-
+            } else {
                 position
             }
+        } else {
+            let line = &mut self.lines[position.line];
+
+            line.remove(position.column);
+
+            position
         }
     }
 
@@ -99,24 +100,37 @@ impl Source {
     }
 
     pub fn group_insert(&mut self, text: &ByteStr, start: Position) -> Position {
+        println!("Group insert!!");
         text.iter().fold(start, |position, character| {
             self.insert(*character, position)
         })
     }
 
-    pub fn group_delete(&mut self, text: &ByteStr, start: Position) -> Position {
-        text.iter().fold(start, |position, character| {
-            self.delete(*character, position)
-        })
+    pub fn group_delete(&mut self, range: SelectionRange) -> Position {
+        let start = range.start();
+        let mut end = range.end();
+
+        while end != start {
+            if end.column > 0 {
+                end.column -= 1;
+            } else {
+                end.line -= 1;
+                end.column = self.lines[end.line].len() - 1;
+            }
+
+            self.delete(end);
+        }
+
+        start
     }
 
     pub fn apply(&mut self, edit: Edit) -> Position {
         match edit {
             Edit::Insert(character, position) => self.insert(character, position),
-            Edit::Delete(character, position) => self.delete(character, position),
+            Edit::Delete(_, position) => self.delete(position),
 
             Edit::GroupInsert(text, start) => self.group_insert(&text, start),
-            Edit::GroupDelete(text, start) => self.group_delete(&text, start),
+            Edit::GroupDelete(_, range) => self.group_delete(range),
         }
     }
 
@@ -179,19 +193,25 @@ impl Source {
     }
 
     pub fn get_range(&self, range: SelectionRange) -> ByteString {
-        let mut text = ByteString::new();
-        text.extend_from_slice(&self.lines[range.start().line][range.start().column..]);
+        let start = range.start();
+        let end = range.end();
 
-        if range.end().line > 0 {
-            for line in self.lines[range.start().line + 1..range.end().line].iter() {
-                text.push(b'\n');
+        if start.line == end.line {
+            self.lines[start.line][start.column..end.column].into()
+        } else {
+            let mut text = ByteString::new();
+            text.extend_from_slice(&self.lines[start.line][start.column..]);
+            text.push(b'\n');
+
+            for line in self.lines[start.line + 1..end.line].iter() {
                 text.extend_from_slice(line);
+                text.push(b'\n');
             }
 
-            text.extend_from_slice(&self.lines[range.end().line][..range.end().column]);
-        }
+            text.extend_from_slice(&self.lines[end.line][..end.column]);
 
-        text
+            text
+        }
     }
 
     pub fn to_byte_string(&self) -> ByteString {

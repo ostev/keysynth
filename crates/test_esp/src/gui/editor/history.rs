@@ -1,8 +1,9 @@
 use circular_buffer::CircularBuffer;
 use esp_hal::time::Instant;
+use esp_println::println;
 
 use crate::{
-    gui::editor::position::Position,
+    gui::editor::position::{Position, SelectionRange},
     text::{ByteChar, ByteString},
 };
 
@@ -14,7 +15,7 @@ pub enum Edit {
     Insert(ByteChar, Position),
     GroupInsert(ByteString, Position),
     Delete(ByteChar, Position),
-    GroupDelete(ByteString, Position),
+    GroupDelete(ByteString, SelectionRange),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -90,8 +91,11 @@ impl History {
                     column: position.column.saturating_sub(1),
                 },
             ),
-            Edit::GroupInsert(text, position) => Edit::GroupDelete(text, position),
-            Edit::GroupDelete(text, position) => Edit::GroupInsert(text, position),
+            Edit::GroupInsert(text, position) => {
+                let range = SelectionRange::from_start_and_text(position, &text);
+                Edit::GroupDelete(text, range)
+            }
+            Edit::GroupDelete(text, range) => Edit::GroupInsert(text, range.start()),
         };
 
         Some((reverse, timestamped.cursor_before))

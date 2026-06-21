@@ -67,6 +67,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
             .cursor
             .column
             .saturating_sub(MAX_LINE_LENGTH as usize);
+        let selection_range = self.state.selection.range(self.state.cursor);
 
         for (index, line) in lines {
             let line_start = embedded_graphics::geometry::Point::new(
@@ -74,8 +75,15 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
                 y_offset,
             );
 
-            if let Some(selection) = self.state.selection.range(self.state.cursor) {
-                let Ok(_) = selection.draw(&FONT, line_start, target);
+            if let Some(selection) = selection_range {
+                let Ok(_) = selection.draw(
+                    &FONT,
+                    line_start,
+                    index,
+                    scroll_x_offset,
+                    MAX_LINE_LENGTH as usize,
+                    target,
+                );
             }
 
             let mut draw = |text: &str, position: embedded_graphics::geometry::Point| {

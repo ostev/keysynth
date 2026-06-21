@@ -188,6 +188,8 @@ impl EditorState {
             }
         };
 
+        self.scroll();
+
         Change::new()
     }
 
@@ -214,10 +216,10 @@ impl EditorState {
             Some(selection_range) => {
                 let text = self.source.get_range(selection_range);
 
-                let new_cursor = self.source.group_delete(&text, self.cursor);
+                let new_cursor = self.source.group_delete(selection_range);
 
                 self.history.push(
-                    history::Edit::GroupDelete(text, self.cursor),
+                    history::Edit::GroupDelete(text, selection_range),
                     self.cursor,
                     new_cursor,
                 );
@@ -230,19 +232,30 @@ impl EditorState {
                 if is_line {
                     let (edit, new_column) = if is_forward {
                         let deleted = self.source.forward_delete_line(self.cursor);
+                        let new_column =
+                            self.source.lines[self.cursor.line].len().saturating_sub(1);
                         (
-                            history::Edit::GroupDelete(deleted, self.cursor),
-                            self.source.lines[self.cursor.line].len().saturating_sub(1),
+                            history::Edit::GroupDelete(
+                                deleted,
+                                SelectionRange::new(
+                                    self.cursor,
+                                    Position::new(self.cursor.line, new_column),
+                                ),
+                            ),
+                            new_column,
                         )
                     } else {
                         let deleted = self.source.backspace_line(self.cursor);
                         (
                             history::Edit::GroupDelete(
                                 deleted,
-                                Position {
-                                    line: self.cursor.line,
-                                    column: 0,
-                                },
+                                SelectionRange::new(
+                                    Position {
+                                        line: self.cursor.line,
+                                        column: 0,
+                                    },
+                                    self.cursor,
+                                ),
                             ),
                             0,
                         )
@@ -277,7 +290,7 @@ impl EditorState {
                         .map(|char| *char)
                         .unwrap_or(b'\n');
 
-                    let new_cursor = self.source.delete(character, deletion_cursor);
+                    let new_cursor = self.source.delete(deletion_cursor);
 
                     self.history.push(
                         history::Edit::Delete(character, self.cursor),
@@ -322,11 +335,9 @@ impl EditorState {
             }
             Direction::Up => {
                 self.move_cursor_up(1);
-                self.scroll();
             }
             Direction::Down => {
                 self.move_cursor_down(1);
-                self.scroll();
             }
         }
 
@@ -369,7 +380,7 @@ impl EditorState {
         } else if offset_from_bottom < SCROLL_GAP {
             // Scroll down!
             // We don't need `saturating_add` since we won't reach `u32::MAX` lines.
-            self.scroll_start = self.cursor.line + SCROLL_GAP;
+            self.scroll_start += SCROLL_GAP;
         }
     }
 

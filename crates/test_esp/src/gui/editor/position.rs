@@ -8,7 +8,10 @@ use embedded_graphics::{
 use esp_println::println;
 use serde::{Deserialize, Serialize};
 
-use crate::{gui::colors, text};
+use crate::{
+    gui::colors,
+    text::{self, ByteChar, ByteStr},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Position {
@@ -35,6 +38,13 @@ impl Position {
         Self {
             line: self.line.saturating_sub(1),
             column: 0,
+        }
+    }
+
+    pub const fn advance_char(self, character: ByteChar) -> Position {
+        match character {
+            b'\n' => self.advance_newline(),
+            _ => self.advance(),
         }
     }
 
@@ -120,19 +130,59 @@ impl SelectionRange {
         self.end
     }
 
+    pub fn from_start_and_text(start: Position, text: &ByteStr) -> SelectionRange {
+        let end = text.iter().fold(start, |position, &character| {
+            position.advance_char(character)
+        });
+
+        SelectionRange::new(start, end)
+    }
+
     pub fn draw<T: DrawTarget<Color = Rgb565>>(
         &self,
         font: &MonoFont,
         line_start: Point,
+        current_line: usize,
+        scroll_x: usize,
+        visible_line_length: usize,
         target: &mut T,
     ) -> Result<(), T::Error> {
         const CORNER_RADIUS: u32 = 2;
 
-        let width = self.end.column - self.start.column;
+        let (start, width) = if current_line > self.start.line && current_line < self.end.line {
+            // In between, all the line is selected
+            (0, visible_line_length - scroll_x)
+        } else {
+            match (
+                current_line == self.start.line,
+                current_line == self.end.line,
+            ) {
+                (true, true) => {
+                    // The selection is just a single line
+                    let width = self.end.column - self.start.column - scroll_x;
+                    (self.start.column, width.min(visible_line_length))
+                }
+                (true, false) => {
+                    // This is the start of the selection
+                    (
+                        self.start.column,
+                        visible_line_length - self.start.column - scroll_x,
+                    )
+                }
+                (false, true) => {
+                    // This is the end of the selection
+                    (0, self.end.column - scroll_x)
+                }
+                (false, false) => {
+                    // This line is not selected
+                    return Ok(());
+                }
+            }
+        };
 
         let rounded = RoundedRectangle::new(
             Rectangle::new(
-                line_start + Point::new(text::width(font, self.start.column as u32) as i32, 0),
+                line_start + Point::new(text::width(font, start as u32) as i32, 0),
                 embedded_graphics::geometry::Size::new(
                     text::width(font, width as u32),
                     font.character_size.height,
