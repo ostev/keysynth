@@ -47,7 +47,7 @@ impl Default for Parameters {
         Self {
             cutoff: 0.8,
             resonance: 0.1,
-            voice_gain: 1.0,
+            voice_gain: 0.25,
             envelope: Envelope {
                 attack: 0.3,
                 decay: 0.3,

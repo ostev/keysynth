@@ -58,6 +58,26 @@ impl EditorState {
         }
     }
 
+    pub fn get_preview<const PREVIEW_LENGTH: usize>(&self) -> heapless::String<PREVIEW_LENGTH> {
+        self.source
+            .lines
+            .last()
+            .map(|last_line| {
+                heapless::String::<PREVIEW_LENGTH>::from_utf8(
+                    heapless::Vec::from_slice(
+                        &last_line[..(PREVIEW_LENGTH - 3).min(last_line.len())],
+                    )
+                    .unwrap(),
+                )
+                .map(|mut preview| {
+                    preview.push_str("...").unwrap();
+                    preview
+                })
+                .unwrap_or(heapless::format!("<corrupted>").unwrap())
+            })
+            .unwrap_or(heapless::format!("...").unwrap())
+    }
+
     pub unsafe fn to_string_unchecked(&self) -> alloc::string::String {
         unsafe { self.source.to_string_unchecked() }
     }

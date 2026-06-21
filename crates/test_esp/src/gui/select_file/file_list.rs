@@ -1,6 +1,7 @@
 use embedded_graphics::mono_font::{MonoTextStyleBuilder, ascii::FONT_6X12};
 use embedded_gui::{
     component::Component,
+    interactive::FocusState,
     layout::{Direction, IntrinsicSize, Sizing},
     primitive::owned_text::OwnedText,
     signal::{Reactive, Signal, SignalRef},
@@ -198,16 +199,15 @@ impl<'a>
                             .font(&FONT_6X12)
                             .text_color(colors::TEXT);
 
-                        let with_underline = if let Some(_) = focus_state {
-                            builder.underline()
-                        } else {
-                            builder
+                        let with_underline = match *focus_state {
+                            FocusState::Focused => builder.underline(),
+                            FocusState::Unfocused => builder,
                         };
 
                         with_underline.build()
                     };
 
-                    v.group(
+                    v.group_fill(
                         Direction::Horizontal,
                         [
                             v.primitive(

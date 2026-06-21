@@ -30,7 +30,7 @@ pub use view::EditorView as View;
 use crate::gui;
 use crate::gui::colors;
 use crate::gui::display;
-use crate::gui::text_bar::TextBar;
+use crate::gui::text_bar::OwnedTextBar;
 use crate::input::event::Event;
 use crate::text;
 use crate::text::FixedByteString;
@@ -87,26 +87,21 @@ impl<'a>
         gui::AnyPrimitive<'a>,
     > {
         const BAR_HEIGHT: u16 = 40;
+        let text = self.state.map(|state| {
+            heapless::String::from_utf8(state.source.name.clone())
+                .unwrap_or(heapless::format!("<corrupted>").unwrap())
+        });
 
         v.view(
             Direction::Vertical,
             [
-                v.component(
-                    Sizing::Constrained(BAR_HEIGHT),
-                    TextBar {
-                        text: self.state.map(|state| state.source.name.clone()),
-                    },
-                    [],
-                ),
+                v.component(Sizing::Constrained(BAR_HEIGHT), OwnedTextBar { text }, []),
                 v.interactive(gui::FocusKey::Editor, Msg::from_event, |focus_state| {
                     v.primitive(
                         Sizing::Fill,
                         View {
                             state: self.state.clone(),
-                            is_active: Signal::constant(match focus_state {
-                                Some(FocusState::Focused | FocusState::Active) => true,
-                                _ => false,
-                            }),
+                            is_active: Signal::constant(focus_state.is_focused()),
                         },
                     )
                 }),

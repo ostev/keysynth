@@ -31,7 +31,6 @@ use esp_hal::{
 use esp_println::println;
 use esp_storage::FlashStorage;
 use keyboard_protocol::uart::BAUDRATE;
-use st7789v2::{ResetInterface, St7789v2};
 use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
@@ -54,7 +53,7 @@ pub struct Hardware {
 
     // pub audio: AudioHardware,
     pub keyboard: KeyboardHardware,
-    pub encoder: encoder::Hardware<GPIO8<'static>, GPIO7<'static>>,
+    pub encoder: encoder::Hardware<GPIO7<'static>, GPIO8<'static>>,
 
     pub display: DisplayHardware,
 
@@ -113,8 +112,8 @@ impl Hardware {
         let encoder = {
             encoder::Hardware {
                 counter: Pcnt::new(peripherals.PCNT),
-                a: peripherals.GPIO8,
-                b: peripherals.GPIO7,
+                a: peripherals.GPIO7,
+                b: peripherals.GPIO8,
             }
         };
 
@@ -129,7 +128,7 @@ impl Hardware {
             let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
                 peripherals.SPI2,
                 spi::master::Config::default()
-                    .with_frequency(Rate::from_mhz(2))
+                    .with_frequency(Rate::from_mhz(5))
                     .with_mode(spi::Mode::_0),
             )
             .map_err(InitError::SpiConfigError)?

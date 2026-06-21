@@ -5,7 +5,8 @@ use core::{
 
 use alloc::{borrow::Cow, format, string::String};
 use embassy_executor::task;
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either, Either3, select, select3};
+use embassy_time::{Duration, Instant};
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
@@ -16,16 +17,18 @@ use embedded_graphics::{
 use embedded_gui::{
     app::{App, Change, State},
     component::{any_component, background::Background, button::Button, group::Group},
+    draw::LocalTarget,
     interactive::FocusState,
     layout::{Direction, Sizing},
+    position::Position,
     primitive::{any_primitive, owned_text::OwnedText, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
+    size::Size,
 };
 use esp_println::println;
 use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
 use keyboard_protocol::{Key, KeyboardDiff, KeyboardStatus, Modifier, StandardKey::P};
-use st7789v2::{DriverResult, St7789v2};
 
 mod background;
 pub mod colors;
@@ -39,6 +42,7 @@ mod select_file;
 mod text_bar;
 
 pub use effect::current_panel;
+use synth::note::Note;
 
 use crate::{
     concurrency::receive_all,
@@ -52,7 +56,7 @@ use crate::{
         },
         message::Message,
         select_file::file_list::{FileEntry, FileList},
-        text_bar::TextBar,
+        text_bar::{OwnedTextBar, TextBar},
     },
     input::{
         self,
@@ -84,6 +88,12 @@ static SYNTH_PARAMETERS: embassy_sync::signal::Signal<RawMutex, synth::Parameter
 
 pub fn set_synth_parameters(parameters: synth::Parameters) {
     SYNTH_PARAMETERS.signal(parameters);
+}
+
+static NEW_NOTE: embassy_sync::signal::Signal<RawMutex, Note> = embassy_sync::signal::Signal::new();
+
+pub fn set_new_note(note: Note) {
+    NEW_NOTE.signal(note);
 }
 
 static IS_CAPTURING_ALL_KEYBOARD_INPUT: AtomicBool = AtomicBool::new(false);
@@ -131,7 +141,9 @@ enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
     Group(Group),
     Editor(editor::Editor<'a>),
-    TextBar(TextBar),
+    TextBar(TextBar<'a, &'a str>),
+    OwnedTextBar4(OwnedTextBar<4>),
+    OwnedTextBarName(OwnedTextBar<{ NAME_SIZE }>),
     Background(Background<display::Color>),
     FileEntry(FileEntry),
     FileList(FileList<'a>),
@@ -145,7 +157,9 @@ enum AnyPrimitive<'a> {
     EditorView(editor::View<'a>),
     Spacer(embedded_gui::primitive::spacer::Spacer),
     TextStr(Text<'a, display::Color, &'a str>),
-    OwnedText(OwnedText<display::Color, { NAME_SIZE }>),
+    OwnedText4(OwnedText<display::Color, 4>),
+    OwnedTextPreview(OwnedText<display::Color, { home::PREVIEW_LINE_LENGTH }>),
+    OwnedTextName(OwnedText<display::Color, { NAME_SIZE }>),
     LineEditor(LineEditor<'a, { NAME_SIZE }>),
     Dial(Dial),
 }
@@ -172,6 +186,7 @@ struct Gui {
     page: Source<Page>,
 
     synth_parameters: Source<synth::Parameters>,
+    new_note: Source<Option<(Note, Instant)>>,
 
     editor: Source<editor::State>,
 
@@ -221,12 +236,13 @@ impl App for Gui {
             message: Source::new(None),
 
             synth_parameters: Source::new(synth::Parameters::default()),
+            new_note: Source::new(None),
             editor: Source::new(editor::State::default()),
         }
     }
 
     fn initial_focus_key() -> Self::FocusKey {
-        FocusKey::Editor
+        FocusKey::Home(home::FocusKey::default())
     }
 
     fn background_color() -> Rgb565 {
@@ -314,8 +330,19 @@ impl App for Gui {
             (_, Msg::SetSynthParameters(parameters)) => {
                 self.synth_parameters.set(parameters);
             }
+            (_, Msg::SetNewNote(note)) => {
+                self.new_note.set(Some((note, Instant::now())));
+            }
 
             _ => {}
+        }
+
+        const NEW_NOTE_DISPLAY_DURATION: Duration = Duration::from_secs(1);
+
+        if let Some((_, start)) = *self.new_note {
+            if start.elapsed() > NEW_NOTE_DISPLAY_DURATION {
+                self.new_note.set(None);
+            }
         }
 
         return Change::new();
@@ -334,26 +361,33 @@ impl App for Gui {
         Self::AnyPrimitive<'a>,
     > {
         match &*self.page {
-            // Page::Home(home) => home.view(v, self.synth_parameters.signal()),
-            Page::Home(_) => {
-                println!("Rendering home page");
+            Page::Home(home) => home.view(
+                v,
+                self.editor.signal_ref(),
+                self.synth_parameters.signal(),
+                self.new_note
+                    .signal()
+                    .map(|new_note| new_note.map(|(note, _)| note)),
+            ),
+            // Page::Home(_) => {
+            //     println!("Rendering home page");
 
-                v.view(
-                    Direction::Horizontal,
-                    [v.primitive(
-                        Sizing::Fill,
-                        Text {
-                            content: SignalRef::constant(&"Home page is under construction!"),
-                            font_style: Signal::constant(
-                                MonoTextStyleBuilder::new()
-                                    .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-                                    .text_color(display::Color::WHITE)
-                                    .build(),
-                            ),
-                        },
-                    )],
-                )
-            }
+            //     v.view(
+            //         Direction::Horizontal,
+            //         [v.primitive(
+            //             Sizing::Fill,
+            //             Text {
+            //                 content: SignalRef::constant(&"Home page is under construction!"),
+            //                 font_style: Signal::constant(
+            //                     MonoTextStyleBuilder::new()
+            //                         .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+            //                         .text_color(display::Color::WHITE)
+            //                         .build(),
+            //                 ),
+            //             },
+            //         )],
+            //     )
+            // }
             Page::SelectFile(state) => state.view(v),
             Page::Editor => {
                 let editor = v.interactive(
@@ -385,6 +419,7 @@ enum Msg {
     LoadCompleted(Result<editor::source::Source, LoadError>),
 
     SetSynthParameters(synth::Parameters),
+    SetNewNote(Note),
 
     ChangeFocus(FocusKey),
 }
@@ -415,14 +450,10 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     // let Ok(_) = display.driver.clear(Gui::background_color());
     // display.driver.full_flush().await;
 
-    let mut driver = display::Driver::init(display, display::Orientation::Vertical).await;
-    driver.clear_async(colors::ERROR).await;
-    driver.clear_async(colors::LITERAL).await;
-    driver.clear_async(colors::ERROR).await;
-    println!("Initial clear complete!");
+    let mut driver = display::Driver::init(display, display::Orientation::Horizontal).await;
 
-    // driver.clear(Gui::background_color());
-    // driver.full_flush().await;
+    driver.clear(Gui::background_color());
+    driver.full_flush().await;
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
@@ -436,20 +467,15 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     let input_receiver = input_channel::receiver();
 
     loop {
-        // match display.driver.full_flush().await {
-        //     Ok(_) => {}
-        //     Err(error) => {
-        //         println!(
-        //             "Warning: error when writing to display. Here's the error: {:?}",
-        //             error
-        //         )
-        //     }
-        // }
-
-        let events = select(receive_all(&input_receiver), SYNTH_PARAMETERS.wait()).await;
+        let events = select3(
+            receive_all(&input_receiver),
+            SYNTH_PARAMETERS.wait(),
+            NEW_NOTE.wait(),
+        )
+        .await;
 
         match events {
-            Either::First(input_events) => {
+            Either3::First(input_events) => {
                 embedded_gui::app::dispatch(
                     &mut gui,
                     &mut effect_context,
@@ -458,7 +484,8 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 )
                 .await;
             }
-            Either::Second(synth_parameters) => {
+            Either3::Second(synth_parameters) => {
+                // println!("param update!!!");
                 embedded_gui::app::dispatch_msg(
                     &mut gui,
                     &mut effect_context,
@@ -467,13 +494,17 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 )
                 .await;
             }
+            Either3::Third(new_note) => {
+                embedded_gui::app::dispatch_msg(
+                    &mut gui,
+                    &mut effect_context,
+                    &mut internal_state,
+                    Msg::SetNewNote(new_note),
+                )
+                .await
+            }
         }
-        println!("Rendering...");
         let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, false);
-        println!("Render complete!");
-        println!("Flushing display...");
-        driver.clear_async(colors::ERROR).await;
-        // driver.full_flush().await;
-        println!("Flush complete!");
+        driver.partial_flush().await;
     }
 }

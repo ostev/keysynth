@@ -20,7 +20,7 @@ use crate::{
         effect::Effect,
         event::{self},
         select_file::file_list::{FileList, ScrollDirection},
-        text_bar::TextBar,
+        text_bar::{OwnedTextBar, TextBar},
     },
     input::event::Event,
     storage::{self, Files, LoadError, MAX_FILES},
@@ -180,9 +180,9 @@ impl SelectFile {
                 v.component(
                     Sizing::Constrained(BAR_HEIGHT),
                     TextBar {
-                        text: Signal::constant(fixed_str(
+                        text: SignalRef::constant(
                             &"[enter] to select, [super + backspace] to delete",
-                        )),
+                        ),
                     },
                     [],
                 ),

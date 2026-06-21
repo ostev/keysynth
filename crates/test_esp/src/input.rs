@@ -43,7 +43,7 @@ impl State {
         }
     }
 
-    pub fn apply(&mut self, change: InputChange) -> impl Iterator<Item = Event> {
+    pub fn apply<const N: usize>(&mut self, change: InputChange) -> heapless::Vec<Event, N> {
         match change {
             InputChange::Keyboard(keyboard_status) => {
                 let diff = keyboard_status.diff(self.keyboard);
@@ -57,8 +57,32 @@ impl State {
                 pressed
                     .chain(released)
                     .map(move |event| Event::Key { event, keyboard })
+                    .collect()
             }
-            InputChange::Encoder(encoder_status) => todo!(),
+            InputChange::Encoder(encoder_status) => encoder_status
+                .deltas
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, delta)| {
+                    if delta > 0 {
+                        Some((index, encoder::Direction::Increase))
+                    } else if delta < 0 {
+                        Some((index, encoder::Direction::Decrease))
+                    } else {
+                        None
+                    }
+                })
+                .map(|(index, direction)| {
+                    let id = match index {
+                        0 => encoder::Id::Primary,
+                        1 => encoder::Id::Panel(encoder::PanelId::One),
+                        2 => encoder::Id::Panel(encoder::PanelId::Two),
+                        _ => panic!("Only three encoders are supported!"),
+                    };
+
+                    Event::Encoder { id, direction }
+                })
+                .collect(),
         }
     }
 }
@@ -111,6 +135,13 @@ pub async fn router() {
             }
         };
 
+        const MAX_EVENTS_PER_CHANGE: usize = 30;
+
+        let events = changes
+            .into_iter()
+            .map(|change| state.apply::<MAX_EVENTS_PER_CHANGE>(change).into_iter())
+            .flatten();
+
         match mode {
             KeyboardMode::Passthrough => match notification {
                 Either::First(KeyboardWithEncoderStatus {
@@ -124,92 +155,96 @@ pub async fn router() {
                         });
                     }
 
-                    for change in changes {
-                        let events = state.apply(change);
+                    for event in events {
+                        if is_toggle_mode(&event) {
+                            mode = mode.toggle();
+                        }
 
-                        for event in events {
-                            if is_toggle_mode(&event) {
-                                println!("Toggle!");
-                                mode = mode.toggle();
-                            }
+                        // match event {
+                        //     Event::Encoder { id, direction } => {
+                        //         // Handle volume (first encoder)
+                        //         {
+                        //             const VOLUME_STEP: i32 = 40;
 
-                            // match event {
-                            //     Event::Encoder { id, direction } => {
-                            //         // Handle volume (first encoder)
-                            //         {
-                            //             const VOLUME_STEP: i32 = 40;
+                        //             let key = match direction {
+                        //                 encoder::Direction::Increase => StandardKey::VolumeDown,
+                        //                 encoder::Direction::Decrease => StandardKey::VolumeUp,
+                        //             };
 
-                            //             let key = match direction {
-                            //                 encoder::Direction::Increase => StandardKey::VolumeDown,
-                            //                 encoder::Direction::Decrease => StandardKey::VolumeUp,
-                            //             };
+                        //             hid.send(UsbKeyboardStatus::press(key)).await;
+                        //         }
 
-                            //             hid.send(UsbKeyboardStatus::press(key)).await;
-                            //         }
+                        //         // Handle scrolling up/down (fourth encoder)
+                        //         {
+                        //             const SCROLL_STEP: i32 = 1;
 
-                            //         // Handle scrolling up/down (fourth encoder)
-                            //         {
-                            //             const SCROLL_STEP: i32 = 1;
+                        //             let steps = delta[0] / SCROLL_STEP;
 
-                            //             let steps = delta[0] / SCROLL_STEP;
+                        //             let key = if steps < 0 {
+                        //                 Some(StandardKey::Up)
+                        //             } else if steps > 0 {
+                        //                 Some(StandardKey::Down)
+                        //             } else {
+                        //                 None
+                        //             };
 
-                            //             let key = if steps < 0 {
-                            //                 Some(StandardKey::Up)
-                            //             } else if steps > 0 {
-                            //                 Some(StandardKey::Down)
-                            //             } else {
-                            //                 None
-                            //             };
+                        //             if let Some(key) = key {
+                        //                 for _ in 0..(steps as u32) {
+                        //                     hid.send(UsbKeyboardStatus::press(key)).await;
+                        //                 }
+                        //             }
+                        //         }
 
-                            //             if let Some(key) = key {
-                            //                 for _ in 0..(steps as u32) {
-                            //                     hid.send(UsbKeyboardStatus::press(key)).await;
-                            //                 }
-                            //             }
-                            //         }
+                        //         // Handle scrubbing left/right (third encoder)
+                        //         {
+                        //             const SCRUB_STEP: i32 = 4;
 
-                            //         // Handle scrubbing left/right (third encoder)
-                            //         {
-                            //             const SCRUB_STEP: i32 = 4;
+                        //             let steps = delta[0] / SCRUB_STEP;
 
-                            //             let steps = delta[0] / SCRUB_STEP;
+                        //             let key = if steps < 0 {
+                        //                 Some(StandardKey::Left)
+                        //             } else if steps > 0 {
+                        //                 Some(StandardKey::Right)
+                        //             } else {
+                        //                 None
+                        //             };
 
-                            //             let key = if steps < 0 {
-                            //                 Some(StandardKey::Left)
-                            //             } else if steps > 0 {
-                            //                 Some(StandardKey::Right)
-                            //             } else {
-                            //                 None
-                            //             };
-
-                            //             if let Some(key) = key {
-                            //                 for _ in 0..(steps as u32) {
-                            //                     hid.send(UsbKeyboardStatus::press(key)).await;
-                            //                 }
-                            //             }
-                            //         }
-                            //     }
-                            // }
+                        //             if let Some(key) = key {
+                        //                 for _ in 0..(steps as u32) {
+                        //                     hid.send(UsbKeyboardStatus::press(key)).await;
+                        //                 }
+                        //             }
+                        //         }
+                        //     }
+                        // }
+                    }
+                }
+                Either::Second(_) => {
+                    for event in events {
+                        if is_toggle_mode(&event) {
+                            mode = mode.toggle();
                         }
                     }
                 }
-                Either::Second(_) => {}
             },
             KeyboardMode::Capture => {
-                for change in changes {
-                    let events = state.apply(change);
-
-                    for event in events {
-                        if is_toggle_mode(&event) {
-                            println!("Toggle!");
-                            mode = mode.toggle();
-                        } else if gui::is_capturing(&event) {
-                            gui.send(event).await;
-                        } else if let Some(audio_event) =
-                            audio::Event::from_event(gui::current_panel(), event)
-                        {
-                            audio.send(audio_event).await;
+                for event in events {
+                    if is_toggle_mode(&event) {
+                        mode = mode.toggle();
+                    } else if gui::is_capturing(&event) {
+                        gui.send(event).await;
+                    } else if let Some(audio_event) =
+                        audio::Event::from_event(gui::current_panel(), event)
+                    {
+                        match &audio_event {
+                            audio::Event::Note { note, is_pressed } => {
+                                if *is_pressed {
+                                    gui::set_new_note(*note);
+                                }
+                            }
+                            _ => {}
                         }
+                        audio.send(audio_event).await;
                     }
                 }
             }

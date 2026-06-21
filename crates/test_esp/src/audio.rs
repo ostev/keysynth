@@ -82,14 +82,14 @@ impl Event {
     }
 }
 
-const KEYBOARD: synth::keyboard::Keyboard =
-    synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
+// const KEYBOARD: synth::keyboard::Keyboard =
+//     synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
 
 fn synth_key_from_keyboard_key(
     key: keyboard_protocol::StandardKey,
 ) -> Option<synth::keyboard::Key> {
     let (row, column) = match key {
-        // Top row: numbers 1..0 -> columns 1..10
+        // 1234 row -> columns 1..10
         StandardKey::Key1 => (0, 0),
         StandardKey::Key2 => (0, 1),
         StandardKey::Key3 => (0, 2),
@@ -101,7 +101,7 @@ fn synth_key_from_keyboard_key(
         StandardKey::Key9 => (0, 8),
         StandardKey::Key0 => (0, 9),
 
-        // TY row -> columns 1..10
+        // QWERTY row -> columns 1..10
         StandardKey::Q => (1, 0),
         StandardKey::W => (1, 1),
         StandardKey::E => (1, 2),
@@ -113,7 +113,7 @@ fn synth_key_from_keyboard_key(
         StandardKey::O => (1, 8),
         StandardKey::P => (1, 9),
 
-        //  row -> columns 1..10
+        // ASDF row -> columns 1..10
         StandardKey::A => (2, 0),
         StandardKey::S => (2, 1),
         StandardKey::D => (2, 2),
@@ -125,7 +125,7 @@ fn synth_key_from_keyboard_key(
         StandardKey::L => (2, 8),
         StandardKey::Semicolon => (2, 9),
 
-        //  row -> columns 1..10
+        // ZXCVB row -> columns 1..10
         StandardKey::Z => (3, 0),
         StandardKey::X => (3, 1),
         StandardKey::C => (3, 2),
@@ -146,7 +146,8 @@ fn synth_key_from_keyboard_key(
 
 fn note_from_key(key: keyboard_protocol::StandardKey) -> Option<Note> {
     let synth_key = synth_key_from_keyboard_key(key)?;
-    KEYBOARD.note_of(synth_key, BASE_NOTE)
+
+    synth::keyboard::note_of(synth_key, BASE_NOTE)
 }
 
 pub struct State {
@@ -243,8 +244,10 @@ impl State {
                 let _ = gui::set_synth_parameters(self.synth.parameters);
             }
             Event::VoiceGainUpdate { direction } => {
+                pub const GAIN_STEP: f32 = 0.02;
+
                 self.synth.parameters.voice_gain = (self.synth.parameters.voice_gain
-                    + STEP * f32::from(direction))
+                    + GAIN_STEP * f32::from(direction))
                 .clamp(0.0, 1.0);
 
                 let _ = gui::set_synth_parameters(self.synth.parameters);

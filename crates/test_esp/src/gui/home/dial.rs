@@ -1,4 +1,4 @@
-use core::f32;
+use core::f32::{self, MIN};
 
 use embedded_graphics::{
     geometry::{Angle, Point},
@@ -25,12 +25,11 @@ pub struct Dial {
 }
 
 const RADIUS: u16 = 20;
-const OUTLINE_THICKNESS: u32 = 2;
-const STEPS: f32 = 32.0;
+const OUTLINE_THICKNESS: u32 = 3;
 
 impl IntrinsicSize for Dial {
     fn intrinsic_size(&self) -> Size {
-        Size::new(RADIUS * 2, RADIUS * 2)
+        Size::new(RADIUS * 2 + 4, RADIUS * 2 + 4)
     }
 }
 
@@ -39,33 +38,37 @@ impl Primitive<display::Driver> for Dial {
         &self,
         target: &mut embedded_gui::draw::LocalTarget<display::Driver>,
     ) -> Result<(), <display::Driver as embedded_graphics::prelude::DrawTarget>::Error> {
-        // let outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
-        // let fill_style = PrimitiveStyle::with_fill(*self.color);
+        let outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
+        let fill_style = PrimitiveStyle::with_fill(*self.color);
 
-        // let outline = Circle::new(Point::zero(), RADIUS as u32 * 2);
+        let outline = Circle::new(Point::new(0, 0), RADIUS as u32 * 2);
 
-        // // Draw the outline ring
-        // outline.draw_styled(&outline_style, target)?;
+        const MIN_PROGRESS: f32 = 0.03;
 
-        // // Draw the fill sector
-        // Sector::from_circle(
-        //     outline,
-        //     Angle::zero(),
-        //     Angle::from_radians(*self.progress * 2.0 * f32::consts::PI),
-        // )
-        // .draw_styled(&fill_style, target)?;
+        let angle = self.progress.clamp(MIN_PROGRESS, 1.0) * 2.0 * f32::consts::PI;
+
+        // Draw the fill sector
+        Sector::from_circle(
+            outline,
+            Angle::from_radians(-(f32::consts::PI / 2.0)),
+            Angle::from_radians(angle),
+        )
+        .draw_styled(&fill_style, target)?;
+
+        // Draw the outline ring
+        outline.draw_styled(&outline_style, target)?;
 
         Ok(())
     }
 }
 
-pub fn increase(value: f32, steps: usize) -> f32 {
-    (value + (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
-}
+// pub fn increase(value: f32, steps: usize) -> f32 {
+//     (value + (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
+// }
 
-pub fn decrease(value: f32, steps: usize) -> f32 {
-    (value - (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
-}
+// pub fn decrease(value: f32, steps: usize) -> f32 {
+//     (value - (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
+// }
 
 #[derive(Reactive, Clone)]
 pub struct ControlInfo {
@@ -84,10 +87,11 @@ const FONT: MonoFont = ascii::FONT_10X20;
 
 impl IntrinsicSize for Control {
     fn intrinsic_size(&self) -> Size {
-        Size::new(
-            RADIUS * 2,
-            RADIUS * 2 + FONT.character_size.height as u16 + 10,
-        )
+        // Size::new(
+        //     RADIUS * 2,
+        //     RADIUS * 2 + FONT.character_size.height as u16 + 40,
+        // )
+        panic!("Fill only")
     }
 }
 
@@ -125,32 +129,26 @@ impl<'a>
     > {
         v.view(
             Direction::Vertical,
-            [v.group(
-                Direction::Vertical,
-                [
+            [
+                v.primitive(
+                    Sizing::Intrinsic,
+                    Dial {
+                        progress: self.info.progress,
+                        color: self.color.clone(),
+                    },
+                ),
+                // Label centered below the dial
+                v.centered(
+                    Direction::Horizontal,
                     v.primitive(
                         Sizing::Intrinsic,
-                        Dial {
-                            progress: self.info.progress,
-                            color: self.color.clone(),
+                        Text {
+                            content: self.info.label.clone(),
+                            font_style: Signal::constant(MonoTextStyle::new(&FONT, colors::TEXT)),
                         },
                     ),
-                    // Label centered below the dial
-                    v.centered(
-                        Direction::Horizontal,
-                        v.primitive(
-                            Sizing::Intrinsic,
-                            Text {
-                                content: self.info.label.clone(),
-                                font_style: Signal::constant(MonoTextStyle::new(
-                                    &FONT,
-                                    colors::TEXT,
-                                )),
-                            },
-                        ),
-                    ),
-                ],
-            )],
+                ),
+            ],
         )
     }
 }
@@ -167,10 +165,11 @@ const MARGIN: u16 = 20;
 
 impl IntrinsicSize for Panel {
     fn intrinsic_size(&self) -> Size {
-        Size::new(
-            RADIUS * 2 * 2 + MARGIN,
-            RADIUS * 2 + FONT.character_size.height as u16 + 10,
-        )
+        // Size::new(
+        //     RADIUS * 2 * 2 + MARGIN,
+        //     RADIUS * 2 + FONT.character_size.height as u16 + 20,
+        // )
+        panic!("Fill only")
     }
 }
 
@@ -210,7 +209,7 @@ impl<'a>
             Direction::Horizontal,
             [
                 v.component(
-                    Sizing::Intrinsic,
+                    Sizing::Fill,
                     Control {
                         info: self.info_1.clone(),
                         color: self.color.clone(),
@@ -224,7 +223,7 @@ impl<'a>
                     },
                 ),
                 v.component(
-                    Sizing::Intrinsic,
+                    Sizing::Fill,
                     Control {
                         info: self.info_2.clone(),
                         color: self.color.clone(),

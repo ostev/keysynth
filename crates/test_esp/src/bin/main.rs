@@ -28,7 +28,9 @@ use embassy_time::{Duration, Ticker, Timer};
 use esp_println::println;
 use esp_rtos::embassy::{Executor, InterruptExecutor};
 use static_cell::StaticCell;
+use test_esp::gui::{colors, display};
 use test_esp::hardware::Hardware;
+use test_esp::input::encoder;
 use test_esp::input::keyboard::keyboard_interface;
 
 use test_esp::{audio, input};
@@ -70,6 +72,8 @@ async fn main(spawner: Spawner) {
     //     // input_spawner.spawn(encoder(hardware.encoder).unwrap());
     // }
 
+    encoder::configure(hardware.encoder);
+
     {
         static HIGH_PRIORITY_EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
 
@@ -77,8 +81,8 @@ async fn main(spawner: Spawner) {
             HIGH_PRIORITY_EXECUTOR.init_with(|| InterruptExecutor::new(hardware.interrupt_2));
         let high_priority = high_priority_executor.start(esp_hal::interrupt::Priority::Priority3);
 
-        // high_priority.spawn(input::router().unwrap());
-        // high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
+        high_priority.spawn(input::router().unwrap());
+        high_priority.spawn(keyboard_interface(hardware.keyboard).unwrap());
         // high_priority.spawn(
         //     usb_device(
         //         high_priority,
@@ -88,9 +92,7 @@ async fn main(spawner: Spawner) {
         //     )
         //     .unwrap(),
         // );
-        // high_priority.spawn(say_hi().unwrap());
-
-        high_priority.spawn(gui::app(hardware.display, hardware.storage).unwrap());
+        high_priority.spawn(say_hi().unwrap());
     }
 
     {
@@ -102,6 +104,13 @@ async fn main(spawner: Spawner) {
             usb::device_loop(hardware.usb)
         });
     }
+
+    spawner.spawn(gui::app(hardware.display, hardware.storage).unwrap());
+
+    // let mut driver = display::Driver::init(hardware.display, display::Orientation::Vertical).await;
+
+    // driver.clear_async(colors::PURPLE).await;
+    // println!("cleared!");
 }
 
 #[task]

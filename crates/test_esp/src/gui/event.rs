@@ -1,5 +1,8 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
+use enumflags2::make_bitflags;
+use esp_println::println;
 use keyboard_protocol::{Key, KeyboardStatus, Modifier, StandardKey};
+use synth::note::Note;
 
 use crate::{
     gui,
@@ -54,12 +57,13 @@ pub(super) fn on_keydown<Msg: Into<gui::Msg>>(
     move |event| match event {
         Event::Key { event, keyboard } => match event {
             KeyEvent::Pressed(key) => {
-                if keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
-                    || keyboard.modifier_bitfield.contains(Modifier::RightSuper)
+                if keyboard
+                    .modifier_bitfield
+                    .intersects(make_bitflags!(Modifier::{LeftSuper | RightSuper}))
                 {
-                    unmodified(key).map(|msg| msg.into())
-                } else {
                     with_super(key).map(|msg| msg.into())
+                } else {
+                    unmodified(key).map(|msg| msg.into())
                 }
             }
             KeyEvent::Released(_) => None,

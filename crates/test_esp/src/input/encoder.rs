@@ -13,6 +13,7 @@ use esp_hal::{
         unit::Unit,
     },
 };
+use esp_println::println;
 use esp_sync::RawMutex;
 
 pub use channel::receiver;
@@ -65,7 +66,7 @@ mod channel {
     use super::Delta;
     use crate::channel;
 
-    channel! { Delta}
+    channel!(Delta, 32);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -75,8 +76,8 @@ pub struct EncoderStatus {
 
 pub type Delta = i16;
 
-const THRESHOLD: i16 = 2;
-const FILTER: u16 = 10;
+const THRESHOLD: i16 = 3;
+const FILTER: u16 = 12;
 
 fn configure_unit<'d, const N: usize>(
     unit: &mut Unit<'d, N>,
@@ -123,18 +124,27 @@ static COUNTER: Mutex<RawMutex, OnceCell<Pcnt<'static>>> = Mutex::new(OnceCell::
 #[handler(priority = Priority::Priority3)]
 fn interrupt_handler() {
     let sender = channel::sender();
-    unsafe {
+    let events = unsafe {
         COUNTER.lock_mut(|counter| {
             let counter = counter.get_mut().unwrap();
             let unit = &counter.unit0;
 
-            let delta = unit.value();
             let events = unit.events();
 
-            if events.low_limit | events.high_limit {
-                // If the channel's full, then we'll drop encoder ticks. This is fine.
-                let _ = sender.try_send(delta);
-            }
+            unit.reset_interrupt();
+            unit.clear();
+
+            events
         })
-    }
+    };
+
+    let delta = if events.low_limit {
+        -1
+    } else if events.high_limit {
+        1
+    } else {
+        0
+    };
+    // If the channel is full, we'll drop encoder ticks. This is fine.
+    let _ = sender.try_send(delta);
 }

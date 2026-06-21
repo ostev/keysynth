@@ -1,4 +1,4 @@
-use core::convert::Infallible;
+use core::{convert::Infallible, mem};
 
 use alloc::boxed::Box;
 use embassy_time::Timer;
@@ -8,22 +8,19 @@ use embedded_graphics::{
     framebuffer::buffer_size,
     geometry::{Dimensions, Point, Size},
     pixelcolor::{
-        Rgb565,
+        PixelColor, Rgb565,
         raw::{BigEndian, LittleEndian, RawU8, RawU16, ToBytes},
     },
     primitives::Rectangle,
 };
+use embedded_gui::signal::Reactive;
 use embedded_hal::digital::OutputPin;
 use esp_hal::{
     Async, Blocking, DriverMode,
     gpio::{Output, dedicated::OutputDriver},
     spi::{master::SpiDmaBus, slave::Spi},
 };
-use st7789v2::{ControllerInterface, DisplaySize, ResetInterface, St7789v2};
-
-pub const SIZE: DisplaySize = DisplaySize::new(240, 260);
-
-pub const FRAMEBUFFER_SIZE: usize = st7789v2::framebuffer_size(SIZE, st7789v2::ColorMode::Rgb565);
+use esp_println::println;
 
 pub type Color = Rgb565;
 
@@ -240,7 +237,7 @@ pub struct Driver {
 
     orientation: Orientation,
     framebuffer: Box<Framebuffer>,
-    dirty_rect: Rectangle,
+    dirty_rows: [bool; WIDTH],
 }
 
 type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
@@ -249,11 +246,13 @@ type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
     BigEndian,
     WIDTH,
     HEIGHT,
-    { buffer_size::<Rgb565>(WIDTH, HEIGHT) },
+    { buffer_size::<Rgb565>(HEIGHT, WIDTH) },
 >;
 
-const WIDTH: usize = 240; // 240
-const HEIGHT: usize = 280; // 280
+pub const WIDTH: usize = 280;
+pub const HEIGHT: usize = 240;
+
+// TODO: fix orientation bug
 
 impl Driver {
     pub async fn init(hardware: DisplayHardware, orientation: Orientation) -> Driver {
@@ -267,7 +266,7 @@ impl Driver {
             hardware: driver_hardware,
             orientation,
             framebuffer: Box::new(Framebuffer::new()),
-            dirty_rect: Rectangle::zero(),
+            dirty_rows: [false; WIDTH],
         };
 
         driver.hardware.reset();
@@ -306,8 +305,59 @@ impl Driver {
         self.hardware.write_data(bytes).await;
     }
 
+    fn mark_dirty(&mut self, area: &Rectangle) {
+        let bounds = self.bounding_box();
+
+        let intersection = area.intersection(&bounds);
+        let top = intersection.top_left.y as usize;
+
+        if let Some(bottom_right) = intersection.bottom_right() {
+            let bottom = bottom_right.y as usize;
+
+            let slice = &mut self.dirty_rows[top..=bottom];
+            slice.fill(true);
+        }
+    }
+
     pub async fn partial_flush(&mut self) {
-        todo!("Implement dirty rect tracking")
+        let (width, height) = self.orientation.dimensions();
+
+        let bytes_per_row = width * mem::size_of::<<Color as PixelColor>::Raw>();
+
+        let mut row = 0;
+        println!("Partial flush!");
+
+        while row < height {
+            if self.dirty_rows[row] {
+                let start = row;
+
+                while row + 1 < height && self.dirty_rows[row + 1] {
+                    // Advance the row counter while we have a continuous dirty region to avoid calling
+                    // `set_window` for each row individually.
+                    row += 1;
+                }
+                let end = row;
+                println!("ROW BETWEEN {start} AND {end}");
+
+                self.set_window(Window {
+                    x_start: 0,
+                    y_start: start as u16,
+                    x_end: width as u16,
+                    y_end: (end + 1) as u16,
+                })
+                .await;
+
+                println!("WINDOW SET");
+
+                let bytes = &self.framebuffer.data()[start * bytes_per_row..=end * bytes_per_row];
+
+                self.hardware.write_data(bytes).await;
+
+                println!("BYTES WRITTEN ");
+            }
+
+            row += 1;
+        }
     }
 }
 
@@ -328,28 +378,31 @@ impl DrawTarget for Driver {
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        self.framebuffer.draw_iter(pixels)
+        self.framebuffer
+            .draw_iter(pixels.into_iter().inspect(|Pixel(point, color)| {
+                let _ = point
+                    .y
+                    .try_into()
+                    .map(|row: usize| self.dirty_rows.get_mut(row).map(|marker| *marker = true));
+            }))
     }
 
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = Self::Color>,
     {
+        self.mark_dirty(area);
         self.framebuffer.fill_contiguous(area, colors)
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        self.mark_dirty(area);
         self.framebuffer.fill_solid(area, color)
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        self.dirty_rows.fill(true);
         self.framebuffer.clear(color);
-
-        // for byte in self.framebuffer.data() {
-        //     if *byte != 0xff {
-        //         println!("ack bad byte: {byte}")
-        //     }
-        // }
 
         Ok(())
     }

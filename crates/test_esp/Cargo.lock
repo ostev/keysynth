@@ -651,6 +651,7 @@ dependencies = [
  "bumpalo",
  "embedded-graphics",
  "embedded-gui-macros",
+ "esp-println",
  "hashbrown 0.17.1",
  "heapless 0.9.3",
 ]
@@ -733,6 +734,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1763775e2323b7d5f0aa6090657f5e21cfa02ede71f5dc40eead06d64dcd15cc"
 dependencies = [
  "embedded-storage",
+]
+
+[[package]]
+name = "embedded-text"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cf5c72c52db2f7dbe4a9c1ed81cd21301e8d66311b194fa41c04fb4f71843ba"
+dependencies = [
+ "az",
+ "embedded-graphics",
+ "object-chain",
 ]
 
 [[package]]
@@ -1548,6 +1560,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "object-chain"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41af26158b0f5530f7b79955006c2727cd23d0d8e7c3109dc316db0a919784dd"
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2007,16 +2025,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "st7789v2"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4137121aa21dde86d10ef467a17be4fc4311275cf85a6fa8dd79908e3cc9d2fa"
-dependencies = [
- "embedded-graphics-core",
- "embedded-hal 1.0.0",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2154,6 +2162,7 @@ dependencies = [
  "embedded-hal-async",
  "embedded-io-async 0.7.0",
  "embedded-storage-async",
+ "embedded-text",
  "enumflags2",
  "esp-alloc",
  "esp-backtrace",
@@ -2171,7 +2180,6 @@ dependencies = [
  "rpds",
  "sequential-storage",
  "serde",
- "st7789v2",
  "static_cell",
  "synth",
  "u8g2-fonts",
