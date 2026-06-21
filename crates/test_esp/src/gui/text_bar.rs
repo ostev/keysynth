@@ -1,4 +1,5 @@
-use bumpalo::boxed::Box;
+use alloc::boxed::Box;
+use bumpalo::Bump;
 use embedded_graphics::{
     mono_font::{
         MonoFont, MonoTextStyleBuilder,
@@ -45,7 +46,7 @@ impl<'a, const N: usize>
         gui::AnyPrimitive<'a>,
     > for OwnedTextBar<N>
 where
-    Box<'a, OwnedText<display::Color, N>>: Into<gui::AnyPrimitive<'a>>,
+    Box<OwnedText<display::Color, N>, &'a Bump>: Into<gui::AnyPrimitive<'a>>,
 {
     fn view(
         &self,
@@ -114,7 +115,7 @@ impl<'a, S: AsRef<str>>
         gui::AnyPrimitive<'a>,
     > for TextBar<'a, S>
 where
-    Box<'a, Text<'a, display::Color, S>>: Into<gui::AnyPrimitive<'a>>,
+    Box<Text<'a, display::Color, S>, &'a Bump>: Into<gui::AnyPrimitive<'a>>,
 {
     fn view(
         &self,

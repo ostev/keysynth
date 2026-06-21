@@ -1,6 +1,7 @@
 use core::sync::atomic::Ordering;
 
 use atomic::Atomic;
+use esp_println::println;
 
 use crate::{
     gui::{
@@ -36,11 +37,16 @@ impl Context {
     async fn save(&mut self, name: Name, bytes: [u8; MAX_SIZE]) -> Result<Name, LoadError> {
         let mut files = self.storage.fetch_files().await?;
 
-        self.storage.save(&key_from_name(&name), &bytes).await?;
+        self.storage
+            .save(&key_from_name(&name), &bytes)
+            .await
+            .unwrap();
 
         files.create(name.clone())?;
 
         self.save_files(&files).await?;
+
+        println!("Saved file to flash!");
 
         Ok(name)
     }
@@ -55,13 +61,12 @@ impl Context {
     }
 
     async fn delete(&mut self, name: &Name) -> Result<(), LoadError> {
-        // let mut files = self.storage.fetch_files().await?;
+        let mut files = self.storage.fetch_files().await?;
 
-        // files.files.remove(name);
-        // self.save_files(&files).await?;
+        files.remove(name);
+        self.save_files(&files).await?;
 
-        // self.storage.delete(&key_from_name(name)).await
-        Ok(())
+        self.storage.delete(&key_from_name(name)).await
     }
 
     async fn rename(&mut self, old_name: Name, new_name: Name) -> Result<(), LoadError> {
@@ -70,11 +75,15 @@ impl Context {
         let mut source = self.load(old_name.clone()).await?;
         source.name = new_name.clone();
 
+        let mut buffer = [0; MAX_SIZE];
+
         self.storage.delete(&key_from_name(&old_name)).await?;
         self.storage
             .save(
                 &key_from_name(&new_name),
-                &source.serialize().map_err(LoadError::Serialization)?,
+                source
+                    .serialize(&mut buffer)
+                    .map_err(LoadError::Serialization)?,
             )
             .await?;
 

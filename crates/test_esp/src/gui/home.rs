@@ -99,174 +99,161 @@ impl Home {
 
         v.view(
             Direction::Vertical,
-            [
-                // v.component(
-                //     Sizing::Intrinsic,
-                //     TextBar {
-                //         text: SignalRef::constant(&"[super] + [e] to edit program"),
-                //     },
-                //     [],
-                // ),
-                v.group_fill(
-                    Direction::Horizontal,
-                    [
-                        v.primitive(
-                            Sizing::Intrinsic,
-                            Spacer {
-                                size: Signal::constant(Size::new(40, 0)),
-                            },
-                        ),
-                        v.group(
-                            Direction::Vertical,
-                            Sizing::Constrained(120),
-                            [
-                                // Cutoff & resonance
-                                v.interactive(
-                                    FocusKey::Panel(encoder::Panel::CutoffResonance),
-                                    event::on_keydown(
-                                        |key| match key {
-                                            Key::Standard(StandardKey::Down) => {
-                                                Some(Msg::SetPanel(encoder::Panel::AttackDecay))
-                                            }
-                                            _ => None,
-                                        },
-                                        |_| None,
-                                    ),
-                                    |focus_state| {
-                                        panel_with_background(
-                                            v,
-                                            focus_state,
-                                            synth_parameters.map(|params| params.cutoff),
-                                            synth_parameters.map(|params| params.resonance),
-                                            SignalRef::constant(&"Cut"),
-                                            SignalRef::constant(&"Res"),
-                                        )
+            [v.group_fill(
+                Direction::Horizontal,
+                [
+                    v.primitive(
+                        Sizing::Intrinsic,
+                        Spacer {
+                            size: Signal::constant(Size::new(40, 0)),
+                        },
+                    ),
+                    v.group(
+                        Direction::Vertical,
+                        Sizing::Constrained(120),
+                        [
+                            // Cutoff & resonance
+                            v.interactive(
+                                FocusKey::Panel(encoder::Panel::CutoffResonance),
+                                event::on_keydown(
+                                    |key| match key {
+                                        Key::Standard(StandardKey::Down) => {
+                                            Some(Msg::SetPanel(encoder::Panel::AttackDecay))
+                                        }
+                                        _ => None,
                                     },
+                                    |_| None,
                                 ),
-                                // // Attack & decay
-                                v.interactive(
-                                    FocusKey::Panel(encoder::Panel::AttackDecay),
-                                    event::on_keydown(
-                                        |key| match key {
-                                            Key::Standard(StandardKey::Down) => {
-                                                Some(Msg::SetPanel(encoder::Panel::SustainRelease))
-                                            }
-                                            Key::Standard(StandardKey::Up) => {
-                                                Some(Msg::SetPanel(encoder::Panel::CutoffResonance))
-                                            }
+                                |focus_state| {
+                                    panel_with_background(
+                                        v,
+                                        focus_state,
+                                        synth_parameters.map(|params| params.cutoff),
+                                        synth_parameters.map(|params| params.resonance),
+                                        SignalRef::constant(&"Cut"),
+                                        SignalRef::constant(&"Res"),
+                                    )
+                                },
+                            ),
+                            // // Attack & decay
+                            v.interactive(
+                                FocusKey::Panel(encoder::Panel::AttackDecay),
+                                event::on_keydown(
+                                    |key| match key {
+                                        Key::Standard(StandardKey::Down) => {
+                                            Some(Msg::SetPanel(encoder::Panel::SustainRelease))
+                                        }
+                                        Key::Standard(StandardKey::Up) => {
+                                            Some(Msg::SetPanel(encoder::Panel::CutoffResonance))
+                                        }
 
-                                            _ => None,
-                                        },
-                                        |_| None,
-                                    ),
-                                    |focus_state| {
-                                        panel_with_background(
-                                            v,
-                                            focus_state,
-                                            synth_parameters.map(|params| params.envelope.attack),
-                                            synth_parameters.map(|params| params.envelope.decay),
-                                            SignalRef::constant(&"Att"),
-                                            SignalRef::constant(&"Dec"),
-                                        )
+                                        _ => None,
+                                    },
+                                    |_| None,
+                                ),
+                                |focus_state| {
+                                    panel_with_background(
+                                        v,
+                                        focus_state,
+                                        synth_parameters.map(|params| params.envelope.attack),
+                                        synth_parameters.map(|params| params.envelope.decay),
+                                        SignalRef::constant(&"Att"),
+                                        SignalRef::constant(&"Dec"),
+                                    )
+                                },
+                            ),
+                            // Sustain & release
+                            v.interactive(
+                                FocusKey::Panel(encoder::Panel::SustainRelease),
+                                event::on_keydown(
+                                    |key| match key {
+                                        Key::Standard(StandardKey::Up) => {
+                                            Some(Msg::SetPanel(encoder::Panel::AttackDecay))
+                                        }
+                                        _ => None,
+                                    },
+                                    |_| None,
+                                ),
+                                |focus_state| {
+                                    panel_with_background(
+                                        v,
+                                        focus_state,
+                                        synth_parameters.map(|params| params.envelope.sustain),
+                                        synth_parameters.map(|params| params.envelope.release),
+                                        SignalRef::constant(&"Sus"),
+                                        SignalRef::constant(&"Rel"),
+                                    )
+                                },
+                            ),
+                        ],
+                    ),
+                    v.spacer(),
+                    v.group(
+                        Direction::Vertical,
+                        Sizing::Constrained(90),
+                        [
+                            v.centered(
+                                Direction::Horizontal,
+                                v.primitive(
+                                    Sizing::Intrinsic,
+                                    OwnedText {
+                                        content: new_note.map(|note| {
+                                            note.map(|note| note.to_name())
+                                                .flatten()
+                                                .unwrap_or(heapless::format!("<  >").unwrap())
+                                        }),
+                                        font_style: style,
                                     },
                                 ),
-                                // Sustain & release
-                                v.interactive(
-                                    FocusKey::Panel(encoder::Panel::SustainRelease),
-                                    event::on_keydown(
-                                        |key| match key {
-                                            Key::Standard(StandardKey::Up) => {
-                                                Some(Msg::SetPanel(encoder::Panel::AttackDecay))
-                                            }
-                                            _ => None,
-                                        },
-                                        |_| None,
-                                    ),
-                                    |focus_state| {
-                                        panel_with_background(
-                                            v,
-                                            focus_state,
-                                            synth_parameters.map(|params| params.envelope.sustain),
-                                            synth_parameters.map(|params| params.envelope.release),
-                                            SignalRef::constant(&"Sus"),
-                                            SignalRef::constant(&"Rel"),
-                                        )
+                            ),
+                            v.centered(
+                                Direction::Horizontal,
+                                v.primitive(
+                                    Sizing::Intrinsic,
+                                    Text {
+                                        content: SignalRef::constant(&"Program"),
+                                        font_style: style,
                                     },
                                 ),
-                            ],
-                        ),
-                        v.spacer(),
-                        v.group(
-                            Direction::Vertical,
-                            Sizing::Constrained(90),
-                            [
+                            ),
+                            {
+                                let preview_text = editor.map(|option_editor| {
+                                    option_editor
+                                        .as_ref()
+                                        .map(|editor| editor.get_preview::<PREVIEW_LINE_LENGTH>())
+                                        .unwrap_or(heapless::format!("no program loaded").unwrap())
+                                });
+                                println!("Preview text: {:?}", preview_text);
+
                                 v.centered(
                                     Direction::Horizontal,
                                     v.primitive(
                                         Sizing::Intrinsic,
                                         OwnedText {
-                                            content: new_note.map(|note| {
-                                                note.map(|note| note.to_name())
-                                                    .flatten()
-                                                    .unwrap_or(heapless::format!("<  >").unwrap())
-                                            }),
+                                            content: preview_text,
                                             font_style: style,
                                         },
                                     ),
-                                ),
-                                v.centered(
-                                    Direction::Horizontal,
-                                    v.primitive(
-                                        Sizing::Intrinsic,
-                                        Text {
-                                            content: SignalRef::constant(&"Program"),
-                                            font_style: style,
-                                        },
-                                    ),
-                                ),
-                                {
-                                    let preview_text = editor.map(|option_editor| {
-                                        option_editor
-                                            .as_ref()
-                                            .map(|editor| {
-                                                editor.get_preview::<PREVIEW_LINE_LENGTH>()
-                                            })
-                                            .unwrap_or(
-                                                heapless::format!("no program loaded").unwrap(),
-                                            )
-                                    });
-
-                                    v.centered(
-                                        Direction::Horizontal,
-                                        v.primitive(
-                                            Sizing::Intrinsic,
-                                            OwnedText {
-                                                content: preview_text,
-                                                font_style: style,
-                                            },
-                                        ),
-                                    )
-                                },
-                                // Gain
-                                v.component(
-                                    Sizing::Constrained(80),
-                                    dial::Control {
-                                        color: Signal::constant(colors::TEXT),
-                                        info: dial::ControlInfo {
-                                            progress: synth_parameters
-                                                .map(|params| params.voice_gain),
-                                            label: SignalRef::constant(&"Gain"),
-                                        },
+                                )
+                            },
+                            // Gain
+                            v.component(
+                                Sizing::Constrained(80),
+                                dial::Control {
+                                    color: Signal::constant(colors::TEXT),
+                                    info: dial::ControlInfo {
+                                        progress: synth_parameters.map(|params| params.voice_gain),
+                                        label: SignalRef::constant(&"Gain"),
                                     },
-                                    [],
-                                ),
-                                v.spacer(),
-                            ],
-                        ),
-                        // v.spacer(),
-                    ],
-                ),
-            ],
+                                },
+                                [],
+                            ),
+                            v.spacer(),
+                        ],
+                    ),
+                    // v.spacer(),
+                ],
+            )],
         )
     }
 }

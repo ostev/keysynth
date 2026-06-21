@@ -15,8 +15,8 @@ use crate::{
     text::{ByteChar, ByteStr, ByteString, Name},
 };
 
-/// Each program can be a maximum of 2KB
-pub const MAX_SIZE: usize = 2 * 1024;
+/// Each program can be a maximum of 9KB
+pub const MAX_SIZE: usize = 3 * 1024;
 
 #[derive(Clone)]
 pub struct Source {
@@ -155,12 +155,8 @@ impl Source {
     //     Ok(Source::from_serialized(name, source))
     // }
 
-    pub fn serialize(&self) -> Result<[u8; MAX_SIZE], postcard::Error> {
-        let mut bytes = [0; MAX_SIZE];
-
-        postcard::to_slice(&SerializedSource::from(self), &mut bytes)?;
-
-        Ok(bytes)
+    pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> Result<&'a [u8], postcard::Error> {
+        postcard::to_slice(&SerializedSource::from(self), buffer).map(|bytes| &*bytes)
     }
 
     pub fn deserialize(name: Name, serialized: &[u8]) -> Result<Source, postcard::Error> {

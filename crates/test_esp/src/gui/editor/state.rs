@@ -92,8 +92,8 @@ impl EditorState {
             .unwrap_or(heapless::format!("...").unwrap())
     }
 
-    pub fn serialize(&self) -> Result<[u8; MAX_SIZE], postcard::Error> {
-        self.source.serialize()
+    pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> Result<&'a [u8], postcard::Error> {
+        self.source.serialize(buffer)
     }
 
     pub fn name(&self) -> &Name {
@@ -561,16 +561,20 @@ impl Msg {
 
                                 // Insertion
                                 _ => {
-                                    let to_char = if is_shift {
-                                        StandardKey::to_char_upper
-                                    } else {
-                                        StandardKey::to_char_lower
-                                    };
-
-                                    if let Some(character) = to_char(standard) {
-                                        Msg::Insert(character)
-                                    } else {
+                                    if is_super {
                                         return None;
+                                    } else {
+                                        let to_char = if is_shift {
+                                            StandardKey::to_char_upper
+                                        } else {
+                                            StandardKey::to_char_lower
+                                        };
+
+                                        if let Some(character) = to_char(standard) {
+                                            Msg::Insert(character)
+                                        } else {
+                                            return None;
+                                        }
                                     }
                                 }
                             }

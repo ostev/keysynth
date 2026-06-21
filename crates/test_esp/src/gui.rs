@@ -52,7 +52,10 @@ use crate::{
     concurrency::receive_all,
     gui::{
         display::DisplayHardware,
-        editor::line::{self, LineEditor},
+        editor::{
+            MAX_SIZE,
+            line::{self, LineEditor},
+        },
         effect::Effect,
         home::{
             Home,
@@ -254,9 +257,10 @@ impl App for Gui {
         event::on_keydown(
             |_| None,
             |key| match key {
-                Key::Standard(StandardKey::E) => {
-                    self.editor.as_ref().map(|_| Msg::ChangePage(Page::Editor))
-                }
+                Key::Standard(StandardKey::E) => match *self.page {
+                    Page::Editor => Some(Msg::ChangePage(Page::Home(home::Home::default()))),
+                    _ => self.editor.as_ref().map(|_| Msg::ChangePage(Page::Editor)),
+                },
                 Key::Standard(StandardKey::O) => {
                     Some(Msg::ChangePage(Page::SelectFile(SelectFile::default())))
                 }
@@ -275,7 +279,7 @@ impl App for Gui {
             }
         }
 
-        const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_secs(2);
+        const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_millis(500);
 
         let is_message_old = self
             .message
@@ -289,26 +293,19 @@ impl App for Gui {
 
         match msg {
             Msg::Page(page_msg) => {
-                return self.page.update(|page| {
-                    match (page, page_msg) {
-                        (Page::Home(state), PageMsg::Home(home_msg)) => {
-                            return state.update(home_msg);
-                        }
-                        (Page::Editor, PageMsg::Editor(editor_msg)) => {
-                            return self.editor.update(|editor| {
-                                editor
-                                    .as_mut()
-                                    .map(|editor| editor.update(editor_msg))
-                                    .unwrap_or(Change::new())
-                            });
-                        }
-                        (Page::SelectFile(home), PageMsg::SelectFile(home_msg)) => {
-                            home.update(home_msg);
-                        }
-
-                        _ => {}
+                return self.page.update(|page| match (page, page_msg) {
+                    (Page::Home(state), PageMsg::Home(home_msg)) => state.update(home_msg),
+                    (Page::Editor, PageMsg::Editor(editor_msg)) => self.editor.update(|editor| {
+                        editor
+                            .as_mut()
+                            .map(|editor| editor.update(editor_msg))
+                            .unwrap_or(Change::new())
+                    }),
+                    (Page::SelectFile(select_file), PageMsg::SelectFile(select_file_msg)) => {
+                        select_file.update(select_file_msg)
                     }
-                    Change::new()
+
+                    _ => Change::new(),
                 });
             }
             Msg::LoadCompleted(result) => match result {
@@ -316,7 +313,7 @@ impl App for Gui {
                     self.editor
                         .update(|editor| *editor = Some(editor::State::new(source)));
 
-                    return self.page.change(Page::Editor);
+                    return self.page.update(|page| page.change(Page::Editor));
                 }
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -332,10 +329,11 @@ impl App for Gui {
 
                     match name {
                             Ok(name) => {
-                                self.message.set(Some(Message::now(Cow::Owned(format!(
+                                let message = Cow::Owned(format!(
                                     "Saved to {}!",
                                     name
-                                )))));
+                                ));
+                                self.message.set(Some(Message::now(message)));
                             }
                             Err(_) => {
                                 self.message.set(Some(Message::now(Cow::Borrowed(
@@ -345,6 +343,7 @@ impl App for Gui {
                         }
                 }
                 Err(error) => {
+                    println!("error saving to flash: {:?}", error);
                     let text = Cow::Owned(format!(
                         "An error occurred while saving to flash! Please try again. The error is: {:?}",
                         error
@@ -377,7 +376,7 @@ impl App for Gui {
                 return Change::new().with_focus_key(focus);
             }
             Msg::ChangePage(new_page) => {
-                return self.page.change(new_page);
+                return self.page.update(|page| page.change(new_page));
             }
 
             Msg::SetSynthParameters(parameters) => {
@@ -389,10 +388,12 @@ impl App for Gui {
 
             Msg::SaveFile => {
                 if let Some(editor) = self.editor.as_ref() {
-                    match editor.serialize() {
-                        Ok(serialized) => {
+                    let mut buffer = [0; MAX_SIZE];
+
+                    match editor.serialize(&mut buffer) {
+                        Ok(_) => {
                             return Change::new()
-                                .with_effect(Effect::Save(editor.name().clone(), serialized));
+                                .with_effect(Effect::Save(editor.name().clone(), buffer));
                         }
                         Err(_) => {
                             let text = Cow::Borrowed(
@@ -422,13 +423,17 @@ impl App for Gui {
         Self::AnyPrimitive<'a>,
     > {
         if let Some(message) = self.message.option_signal_ref() {
+            println!(
+                "Message: {:?}",
+                message.map_ref(&v.bump, |message| message.text.clone())
+            );
             v.view(
                 Direction::Horizontal,
                 [v.background(
                     Sizing::Fill,
                     Signal::constant(colors::BACKGROUND_LIGHT),
                     [v.middle(v.primitive(
-                        Sizing::Fill,
+                        Sizing::Intrinsic,
                         Text {
                             content: message.map_ref(&v.bump, |message| message.text.clone()),
                             font_style: Signal::constant(MonoTextStyle::new(
@@ -576,7 +581,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 .await
             }
         }
-        let page_has_changed = gui.page.has_changed();
+        let page_has_changed = gui.page.has_changed() || gui.message.has_changed();
 
         if page_has_changed {
             driver.clear(Gui::background_color());

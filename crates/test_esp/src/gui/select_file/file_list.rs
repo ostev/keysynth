@@ -9,21 +9,22 @@ use embedded_gui::{
     view::Children,
 };
 
+use esp_println::println;
 use itertools::Itertools;
 use keyboard_protocol::{Key, StandardKey};
 
 use crate::{
     gui::{self, colors, display, event, select_file},
     input::event::Event,
-    storage::MAX_FILES,
-    text::{Name, name_to_string},
+    storage::{LoadError, MAX_FILES},
+    text::{Name, fixed_str, name_to_string},
 };
 
 pub const VISIBLE_FILES: usize = 10;
 
 #[derive(Reactive)]
 pub struct FileList<'a> {
-    pub files: SignalRef<'a, heapless::Vec<Name, { MAX_FILES }>>,
+    pub files: SignalRef<'a, Result<heapless::Vec<Name, { MAX_FILES }>, LoadError>>,
     pub scroll: Signal<usize>,
 }
 
@@ -67,8 +68,10 @@ impl<'a>
     > {
         let Ok(list_items) = self
             .files
+            .as_ref()
+            .unwrap_or(&heapless::Vec::from_array([fixed_str(&"Error loading")]))
             .iter()
-            .skip(*self.scroll)
+            .skip(self.scroll.saturating_sub(VISIBLE_FILES))
             .take(VISIBLE_FILES)
             .enumerate()
             .map(|(index, file_name)| {
@@ -88,24 +91,7 @@ impl<'a>
             panic!("More files selected than can be displayed!")
         };
 
-        v.view(
-            Direction::Vertical,
-            // [v.interactive(
-            //     gui::FocusKey::FileList,
-            //     |event| match event {
-            //         Event::Key { event, .. } => match event {
-            //             Pressed(Key::Standard(key)) => match key {
-            //                 StandardKey::Down => gui::Msg::ScrollFileList(ScrollDirection::Down),
-            //                 StandardKey::Up => gui::Msg::ScrollFileList(ScrollDirection::Up),
-            //                 _ => gui::Msg::NoOp,
-            //             },
-            //             _ => gui::Msg::NoOp,
-            //         },
-            //     },
-            //     |_| v.group(Direction::Vertical, []),
-            // )],
-            list_items,
-        )
+        v.view(Direction::Vertical, list_items)
     }
 }
 
@@ -166,15 +152,6 @@ impl<'a>
             Direction::Horizontal,
             [v.interactive(
                 select_file::FocusKey::FileList(*self.index),
-                // move |event| {
-                //     event::handler(
-                //         event,
-                //         select_file::Msg::ScrollFileList(ScrollDirection::Down),
-                //         select_file::Msg::ScrollFileList(ScrollDirection::Up),
-                //         select_file::Msg::SelectFile(index),
-                //         select_file::Msg::NoOp,
-                //     )
-                // },
                 event::on_keydown(
                     move |key| match key {
                         Key::Standard(StandardKey::Down) => {

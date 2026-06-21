@@ -7,6 +7,7 @@ use embedded_gui::{
     signal::{Reactive, Signal, SignalRef, Source},
     view::View,
 };
+use esp_println::println;
 use keyboard_protocol::{Key, StandardKey};
 
 pub mod file_list;
@@ -50,7 +51,7 @@ pub enum Msg {
 
 #[derive(Reactive, embedded_gui::app::State)]
 pub struct SelectFile {
-    files: Source<heapless::Vec<Name, { MAX_FILES }>>,
+    files: Source<Result<heapless::Vec<Name, { MAX_FILES }>, LoadError>>,
     scroll: Source<usize>,
 
     line_editor: Source<line::State<{ NAME_SIZE }>>,
@@ -59,7 +60,7 @@ pub struct SelectFile {
 impl Default for SelectFile {
     fn default() -> Self {
         Self {
-            files: Source::new(heapless::Vec::new()),
+            files: Source::new(Ok(heapless::Vec::new())),
             scroll: Source::new(0),
             line_editor: Source::new(line::State::new()),
         }
@@ -73,37 +74,56 @@ impl SelectFile {
                 self.line_editor.update(|line| line.update(line_msg));
             }
 
-            Msg::ScrollFileList(scroll_direction) => {
-                if *self.scroll == 0 {
-                    return Change::new().with_focus_key(FocusKey::NewFile);
-                } else {
-                    self.scroll.update(|scroll| match scroll_direction {
-                        ScrollDirection::Down => (*scroll + 1).min(MAX_FILES),
-                        ScrollDirection::Up => scroll.saturating_sub(1),
-                    });
-                }
+            Msg::ScrollFileList(direction) => {
+                return Change::new().with_focus_key_if_present(self.scroll(direction));
             }
 
             Msg::SelectFile(index) => {
-                if let Some(name) = self.files.get(index) {
-                    return Change::new().with_effect(Effect::Load(name.clone()));
+                if let Ok(files) = &*self.files {
+                    if let Some(name) = files.get(index) {
+                        return Change::new().with_effect(Effect::Load(name.clone()));
+                    }
                 }
             }
             Msg::DeleteFile(index) => {
-                if let Some(name) = self.files.get(index) {
-                    return Change::new().with_effect(Effect::Delete(name.clone()));
+                if let Ok(files) = &*self.files {
+                    if let Some(name) = files.get(index).cloned() {
+                        let focus_key = if index == files.len() - 1 {
+                            self.scroll(ScrollDirection::Up)
+                        } else {
+                            None
+                        };
+
+                        return Change::new()
+                            .with_focus_key_if_present(focus_key)
+                            .with_effect(Effect::Delete(name.clone()));
+                    }
                 }
             }
 
             Msg::FilesReceived(files) => {
-                self.files
-                    .update(|_| files.ok().map(Files::sorted_by_most_recent));
+                self.files.set(files.map(Files::sorted_by_most_recent));
             }
 
             Msg::NoOp => {}
         }
 
         Change::new()
+    }
+
+    fn scroll(&mut self, direction: ScrollDirection) -> Option<FocusKey> {
+        let num_files = self.files.as_ref().map(|files| files.len()).unwrap_or(0);
+        if *self.scroll == 0 && direction == ScrollDirection::Up {
+            Some(FocusKey::NewFile)
+        } else if num_files > 0 {
+            self.scroll.set_with(|scroll| match direction {
+                ScrollDirection::Down => (*scroll + 1).min(num_files.saturating_sub(1)).max(0),
+                ScrollDirection::Up => scroll.saturating_sub(1),
+            });
+            Some(FocusKey::FileList(*self.scroll))
+        } else {
+            None
+        }
     }
 }
 
@@ -123,134 +143,96 @@ impl SelectFile {
         const BAR_HEIGHT: u16 = 40;
 
         let file_name = self.line_editor.as_fixed_byte_string();
-        let num_files = self.files.len();
+        let num_files = self.files.as_ref().map(|files| files.len()).unwrap_or(0);
 
         v.view(
             Direction::Vertical,
-            [
-                v.primitive(
-                    Sizing::Intrinsic,
-                    Text {
-                        content: SignalRef::constant(&"HEY WHATS UPPPP HEYYYYYYYY THERE HIII"),
-                        font_style: Signal::constant(
-                            MonoTextStyleBuilder::new()
-                                .font(&ascii::FONT_10X20)
-                                .text_color(colors::TEXT)
-                                .underline_with_color(colors::PURPLE)
-                                .build(),
-                        ),
-                    },
-                ),
-                v.centered(
-                    Direction::Horizontal,
-                    v.group(
-                        Direction::Vertical,
-                        Sizing::Constrained(200),
-                        [
-                            v.interactive(
-                                FocusKey::NewFile,
-                                // move |event| {
-                                //     event::handler(
-                                //         event,
-                                //         {
-                                //             gui::Msg::ChangeFocus(gui::FocusKey::SelectFile(
-                                //                 FocusKey::FileList(0),
-                                //             ))
-                                //         },
-                                //         Msg::NoOp.into(),
-                                //         gui::Msg::LoadCompleted(Ok(editor::source::Source::new(
-                                //             file_name.clone(),
-                                //         ))),
-                                //     )
-                                // },
-                                // event::on_keydown(
-                                //     |key| match key {
-
-                                //         _ => Some(Msg::LineEditor(()))
-                                //     },
-                                //     |key| Some(),
-                                // ),
-                                move |event| match event {
-                                    Event::Key {
-                                        event: key_event, ..
-                                    } => match key_event {
-                                        KeyEvent::Pressed(key) => match key {
-                                            Key::Standard(StandardKey::Down) => {
-                                                if num_files > 0 {
-                                                    Some(gui::Msg::ChangeFocus(
-                                                        gui::FocusKey::SelectFile(
-                                                            FocusKey::FileList(0),
-                                                        ),
-                                                    ))
-                                                } else {
-                                                    None
-                                                }
+            [v.centered(
+                Direction::Horizontal,
+                v.group(
+                    Direction::Vertical,
+                    Sizing::Constrained(200),
+                    [
+                        v.interactive(
+                            FocusKey::NewFile,
+                            move |event| match event {
+                                Event::Key {
+                                    event: key_event, ..
+                                } => match key_event {
+                                    KeyEvent::Pressed(key) => match key {
+                                        Key::Standard(StandardKey::Down) => {
+                                            if num_files > 0 {
+                                                Some(gui::Msg::ChangeFocus(
+                                                    gui::FocusKey::SelectFile(FocusKey::FileList(
+                                                        0,
+                                                    )),
+                                                ))
+                                            } else {
+                                                None
                                             }
-                                            Key::Standard(StandardKey::Enter) => {
-                                                Some(gui::Msg::LoadCompleted(Ok(
-                                                    editor::source::Source::new(file_name.clone()),
-                                                )))
-                                            }
-                                            _ => Some(
-                                                Msg::LineEditor(line::Msg::from_event(event))
-                                                    .into(),
-                                            ),
-                                        },
-
-                                        _ => Some(
-                                            Msg::LineEditor(line::Msg::from_event(event)).into(),
-                                        ),
+                                        }
+                                        Key::Standard(StandardKey::Enter) => {
+                                            Some(gui::Msg::LoadCompleted(Ok(
+                                                editor::source::Source::new(file_name.clone()),
+                                            )))
+                                        }
+                                        _ => line::Msg::from_event(event)
+                                            .map(|msg| Msg::LineEditor(msg).into()),
                                     },
-                                    _ => Some(Msg::LineEditor(line::Msg::from_event(event)).into()),
+
+                                    _ => line::Msg::from_event(event)
+                                        .map(|msg| Msg::LineEditor(msg).into()),
                                 },
-                                |_| {
-                                    v.component(
-                                        Sizing::Constrained(BAR_HEIGHT),
-                                        Group::zero(Signal::constant(Direction::Horizontal)),
-                                        [
-                                            v.primitive(
-                                                Sizing::Intrinsic,
-                                                Text {
-                                                    content: SignalRef::constant(&"New file: "),
-                                                    font_style: Signal::constant(
-                                                        MonoTextStyleBuilder::new()
-                                                            .font(&ascii::FONT_6X13_ITALIC)
-                                                            .text_color(colors::TEXT)
-                                                            .underline_with_color(colors::PURPLE)
-                                                            .build(),
-                                                    ),
-                                                },
-                                            ),
-                                            v.spacer(),
-                                            v.primitive(
-                                                Sizing::Intrinsic,
-                                                LineEditor::new(self.line_editor.signal_ref()),
-                                            ),
-                                        ],
-                                    )
-                                },
-                            ),
-                            v.component(
-                                Sizing::Fill,
-                                FileList {
-                                    files: self.files.signal_ref(),
-                                    scroll: self.scroll.signal(),
-                                },
-                                [],
-                            ),
-                            v.component(
-                                Sizing::Constrained(BAR_HEIGHT),
-                                TextBar {
-                                    text: SignalRef::constant(
-                                        &"[enter] to select, [super + backspace] to delete",
-                                    ),
-                                },
-                                [],
-                            ),
-                        ],
-                    ),
+                                _ => line::Msg::from_event(event)
+                                    .map(|msg| Msg::LineEditor(msg).into()),
+                            },
+                            |_| {
+                                v.component(
+                                    Sizing::Constrained(BAR_HEIGHT),
+                                    Group::zero(Signal::constant(Direction::Horizontal)),
+                                    [
+                                        v.primitive(
+                                            Sizing::Intrinsic,
+                                            Text {
+                                                content: SignalRef::constant(&"New file: "),
+                                                font_style: Signal::constant(
+                                                    MonoTextStyleBuilder::new()
+                                                        .font(&ascii::FONT_6X13_ITALIC)
+                                                        .text_color(colors::TEXT)
+                                                        .underline_with_color(colors::PURPLE)
+                                                        .build(),
+                                                ),
+                                            },
+                                        ),
+                                        v.spacer(),
+                                        v.primitive(
+                                            Sizing::Intrinsic,
+                                            LineEditor::new(self.line_editor.signal_ref()),
+                                        ),
+                                    ],
+                                )
+                            },
+                        ),
+                        v.component(
+                            Sizing::Fill,
+                            FileList {
+                                files: self.files.signal_ref(),
+                                scroll: self.scroll.signal(),
+                            },
+                            [],
+                        ),
+                        v.component(
+                            Sizing::Constrained(BAR_HEIGHT),
+                            TextBar {
+                                text: SignalRef::constant(
+                                    &"[enter] to select, [super + backspace] to delete",
+                                ),
+                            },
+                            [],
+                        ),
+                    ],
                 ),
-            ],
+            )],
         )
     }
 }

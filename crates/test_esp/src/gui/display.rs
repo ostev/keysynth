@@ -372,9 +372,9 @@ impl Driver {
 
 impl Dimensions for Driver {
     fn bounding_box(&self) -> Rectangle {
-        let (width, height) = self.orientation.dimensions();
+        // let (width, height) = self.orientation.dimensions();
 
-        Rectangle::new(Point::zero(), Size::new(width as u32, height as u32))
+        Rectangle::new(Point::zero(), Size::new(WIDTH as u32, HEIGHT as u32))
     }
 }
 

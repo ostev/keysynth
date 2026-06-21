@@ -1,14 +1,10 @@
-mod input {
-    use crate::{channel, storage::SaveInstruction};
-
-    channel!(SaveInstruction);
-}
-
 mod output {
     use crate::{channel, storage::SaveResult};
 
     channel!(SaveResult);
 }
+
+pub use output::receiver;
 
 use core::cell::OnceCell;
 
@@ -20,8 +16,6 @@ use embedded_storage_async::nor_flash::NorFlash;
 use esp_storage::{FlashStorage, FlashStorageError};
 use esp_sync::RawMutex;
 use heapless::index_set::FnvIndexSet;
-pub use input::sender;
-pub use output::receiver;
 use sequential_storage::{
     cache::PageStateCache,
     map::{MapConfig, MapStorage},
@@ -30,7 +24,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::text::{ByteChar, FixedByteString, NAME_SIZE, Name};
 
-pub const MAX_SIZE: usize = 2 * 1024;
+pub const BUFFER_SIZE: usize = 8 * 1024;
+
+pub const MAX_SIZE: usize = 3 * 1024;
 
 pub type Key = [ByteChar; NAME_SIZE + 1];
 
@@ -38,6 +34,7 @@ pub const FILE_LIST_KEY: Key = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 pub const MAX_FILES: usize = 32;
 
+#[derive(Debug)]
 pub struct Files {
     files: heapless::Vec<Name, MAX_FILES>,
 }
@@ -58,7 +55,7 @@ impl Files {
     }
 
     pub fn remove(&mut self, name: &Name) {
-        self.files.retain(|file_name| file_name == name);
+        self.files.retain(|file_name| file_name != name);
     }
 
     pub fn sorted_by_most_recent(mut self) -> heapless::Vec<Name, MAX_FILES> {
@@ -91,11 +88,6 @@ pub fn key_from_name(name: &Name) -> Key {
     key
 }
 
-pub struct SaveInstruction {
-    name: Key,
-    data: [u8; MAX_SIZE],
-}
-
 pub type SaveResult = Result<(), ()>;
 
 const MAP_CONFIG: MapConfig<Flash> = MapConfig::new(0xc00000..0xfff000);
@@ -111,17 +103,19 @@ pub enum LoadError {
     TooManyFiles,
 }
 
+const FILES_SIZE: usize = 3 * 1024;
+
 pub struct Storage {
-    data_buffer: [u8; MAX_SIZE],
+    data_buffer: [u8; BUFFER_SIZE],
     files: MapStorage<Key, Flash, PageStateCache<PAGE_CACHE_COUNT>>,
 }
 
 impl Storage {
     pub fn new(hardware: StorageHardware) -> Storage {
         Storage {
-            data_buffer: [0; MAX_SIZE],
+            data_buffer: [0; BUFFER_SIZE],
             files: MapStorage::new(
-                BlockingAsync::new(hardware.flash),
+                BlockingAsync::new(hardware.flash.multicore_auto_park()),
                 MAP_CONFIG,
                 PageStateCache::<PAGE_CACHE_COUNT>::new(),
             ),
@@ -136,13 +130,9 @@ impl Storage {
             .ok_or(LoadError::NotFound)
     }
 
-    pub async fn save<const N: usize>(
-        &mut self,
-        key: &Key,
-        bytes: &[u8; N],
-    ) -> Result<(), LoadError> {
+    pub async fn save(&mut self, key: &Key, bytes: &[u8]) -> Result<(), LoadError> {
         self.files
-            .store_item(&mut self.data_buffer, &key, bytes)
+            .store_item(&mut self.data_buffer, &key, &bytes)
             .await
             .map_err(LoadError::Flash)
     }
@@ -155,11 +145,13 @@ impl Storage {
     }
 
     pub async fn fetch_files(&mut self) -> Result<Files, LoadError> {
-        self.load(&FILE_LIST_KEY)
-            .await
-            .and_then(|serialized: [u8; MAX_SIZE]| {
-                Files::deserialize(&serialized).map_err(LoadError::Serialization)
-            })
+        match self.load::<MAX_SIZE>(&FILE_LIST_KEY).await {
+            Ok(serialized) => Files::deserialize(&serialized).map_err(LoadError::Serialization),
+            Err(err) => match err {
+                LoadError::NotFound => Ok(Files::new()),
+                _ => Err(err),
+            },
+        }
     }
 }
 

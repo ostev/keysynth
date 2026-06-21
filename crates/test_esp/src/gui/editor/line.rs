@@ -150,7 +150,7 @@ pub enum Msg {
 }
 
 impl Msg {
-    pub fn from_event(event: Event) -> Msg {
+    pub fn from_event(event: Event) -> Option<Msg> {
         match event {
             Event::Key { event, keyboard } => {
                 let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
@@ -158,7 +158,7 @@ impl Msg {
                 let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
                     | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
 
-                match event {
+                Some(match event {
                     KeyEvent::Pressed(key) => match key {
                         Key::Standard(standard) => {
                             match standard {
@@ -179,21 +179,23 @@ impl Msg {
                                 StandardKey::Delete => Msg::ForwardDelete,
 
                                 _ => {
-                                    if let Some(character) = standard.to_char(is_shift) {
+                                    if is_super {
+                                        return None;
+                                    } else if let Some(character) = standard.to_char(is_shift) {
                                         Msg::Insert(character)
                                     } else {
-                                        Msg::NoOp
+                                        return None;
                                     }
                                 }
                             }
                         }
-                        Key::Modifier(_) => Msg::NoOp,
-                        Key::Special(_) => Msg::NoOp,
+                        Key::Modifier(_) => return None,
+                        Key::Special(_) => return None,
                     },
-                    KeyEvent::Released(_) => Msg::NoOp,
-                }
+                    KeyEvent::Released(_) => return None,
+                })
             }
-            _ => Msg::NoOp,
+            _ => return None,
         }
     }
 }
