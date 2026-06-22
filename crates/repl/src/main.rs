@@ -12,6 +12,7 @@ fn main() {
     repl().unwrap();
 }
 
+/// A simple test REPL for the calculator language.
 fn repl() -> rustyline::Result<()> {
     println!("Use :exit to quit.");
     let mut rl = rustyline::DefaultEditor::new()?;
