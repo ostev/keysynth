@@ -603,10 +603,15 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     // let Ok(_) = display.driver.clear(Gui::background_color());
     // display.driver.full_flush().await;
 
-    let mut driver = display::Driver::init(display, display::Orientation::Horizontal).await;
+    let mut driver = display::Driver::init(display, display::Orientation::Horizontal)
+        .await
+        .expect("Display driver failed to initialise.");
 
     driver.clear(Gui::background_color());
-    driver.full_flush().await;
+    driver
+        .full_flush()
+        .await
+        .expect("Initial display clear failed.");
 
     let mut internal_state = embedded_gui::app::InternalState::new(Gui::initial_focus_key());
 
@@ -616,7 +621,10 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     };
 
     let Ok(_) = embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, true);
-    driver.full_flush().await;
+    driver
+        .full_flush()
+        .await
+        .expect("Initial display render failed.");
 
     let input_receiver = input_channel::receiver();
 
@@ -665,6 +673,6 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
 
         let Ok(_) =
             embedded_gui::app::render(&mut gui, &mut internal_state, &mut driver, page_has_changed);
-        driver.full_flush().await;
+        driver.full_flush().await.expect("Display flush failed.");
     }
 }

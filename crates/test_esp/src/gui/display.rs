@@ -18,7 +18,7 @@ use embedded_hal::digital::OutputPin;
 use esp_hal::{
     Async, Blocking, DriverMode,
     gpio::{Output, dedicated::OutputDriver},
-    spi::{master::SpiDmaBus, slave::Spi},
+    spi::{self, master::SpiDmaBus, slave::Spi},
 };
 use esp_println::println;
 
@@ -37,19 +37,19 @@ struct DriverHardware {
 }
 
 impl DriverHardware {
-    async fn write_command(&mut self, command: u8) {
+    async fn write_command(&mut self, command: u8) -> Result<(), spi::Error> {
         self.dc_pin.set_low();
-        self.spi.write_async(&[command]).await.unwrap();
+        self.spi.write_async(&[command]).await
     }
 
-    async fn write_data(&mut self, data: &[u8]) {
+    async fn write_data(&mut self, data: &[u8]) -> Result<(), spi::Error> {
         self.dc_pin.set_high();
-        self.spi.write_async(data).await.unwrap();
+        self.spi.write_async(data).await
     }
 
-    async fn write_packet(&mut self, command: u8, data: &[u8]) {
-        self.write_command(command).await;
-        self.write_data(data).await;
+    async fn write_packet(&mut self, command: u8, data: &[u8]) -> Result<(), spi::Error> {
+        self.write_command(command).await?;
+        self.write_data(data).await
     }
 
     /// Synchronously reset the display
@@ -64,37 +64,37 @@ impl DriverHardware {
         delay();
     }
 
-    async fn enable_ram_write(&mut self) {
+    async fn enable_ram_write(&mut self) -> Result<(), spi::Error> {
         // Send the RAMWR command
-        self.write_command(0x2c).await;
+        self.write_command(0x2c).await
     }
 
-    async fn init_registers(&mut self) {
+    async fn init_registers(&mut self) -> Result<(), spi::Error> {
         for _ in 0..3 {
-            self.write_command(0xaa).await;
+            self.write_command(0xaa).await?;
         }
-        self.write_packet(0x36, &[0x00]).await;
+        self.write_packet(0x36, &[0x00]).await?;
 
-        self.write_packet(0x3a, &[0x05]).await;
+        self.write_packet(0x3a, &[0x05]).await?;
 
         self.write_packet(0xb2, &[0x0b, 0x0b, 0x00, 0x33, 0x35])
-            .await;
+            .await?;
 
-        self.write_packet(0xb7, &[0x2c]).await;
+        self.write_packet(0xb7, &[0x2c]).await?;
 
-        self.write_packet(0xc2, &[0x01]).await;
+        self.write_packet(0xc2, &[0x01]).await?;
 
-        self.write_packet(0xc3, &[0x0d]).await;
+        self.write_packet(0xc3, &[0x0d]).await?;
 
         // VDV, 0x20 -> 0V
-        self.write_packet(0xc4, &[0x20]).await;
+        self.write_packet(0xc4, &[0x20]).await?;
 
         // 0x13 -> 60Hz
-        self.write_packet(0xc6, &[0x13]).await;
+        self.write_packet(0xc6, &[0x13]).await?;
 
-        self.write_packet(0xd0, &[0xa4, 0xa1]).await;
+        self.write_packet(0xd0, &[0xa4, 0xa1]).await?;
 
-        self.write_packet(0xd6, &[0xa1]).await;
+        self.write_packet(0xd6, &[0xa1]).await?;
 
         self.write_packet(
             0xe0,
@@ -102,7 +102,7 @@ impl DriverHardware {
                 0xf0, 0x06, 0x0b, 0x0a, 0x09, 0x26, 0x29, 0x33, 0x41, 0x18, 0x16, 0x15, 0x29, 0x2d,
             ],
         )
-        .await;
+        .await?;
 
         self.write_packet(
             0x31,
@@ -110,27 +110,31 @@ impl DriverHardware {
                 0xf0, 0x04, 0x08, 0x08, 0x07, 0x03, 0x28, 0x32, 0x40, 0x3b, 0x19, 0x18, 0x2a, 0x2e,
             ],
         )
-        .await;
+        .await?;
 
-        self.write_packet(0xe4, &[0x25, 0x00, 0x00]).await;
+        self.write_packet(0xe4, &[0x25, 0x00, 0x00]).await?;
 
-        self.write_command(0x21).await;
-        self.write_command(0x11).await;
+        self.write_command(0x21).await?;
+        self.write_command(0x11).await?;
 
         Timer::after_millis(120).await;
-        self.write_command(0x29).await;
+        self.write_command(0x29).await
     }
 
-    async fn set_orientation(&mut self, orientation: Orientation) {
+    async fn set_orientation(&mut self, orientation: Orientation) -> Result<(), spi::Error> {
         let memory_access_register = match orientation {
             Orientation::Horizontal => 0x70,
             Orientation::Vertical => 0x00,
         };
 
-        self.write_packet(0x36, &[memory_access_register]).await;
+        self.write_packet(0x36, &[memory_access_register]).await
     }
 
-    async fn set_window(&mut self, window: Window, orientation: Orientation) {
+    async fn set_window(
+        &mut self,
+        window: Window,
+        orientation: Orientation,
+    ) -> Result<(), spi::Error> {
         // The vertical offset of the display controller
         const ROW_START: u16 = 20;
 
@@ -172,7 +176,7 @@ impl DriverHardware {
                 x_end_inclusive as u8,
             ],
         )
-        .await;
+        .await?;
         self.write_packet(
             0x2b,
             &[
@@ -182,12 +186,16 @@ impl DriverHardware {
                 y_end_inclusive as u8,
             ],
         )
-        .await;
+        .await?;
 
-        self.enable_ram_write().await;
+        self.enable_ram_write().await
     }
 
-    pub async fn clear_async(&mut self, color: Color, orientation: Orientation) {
+    pub async fn clear_async(
+        &mut self,
+        color: Color,
+        orientation: Orientation,
+    ) -> Result<(), spi::Error> {
         let (width, height) = orientation.dimensions();
 
         self.set_window(
@@ -199,7 +207,7 @@ impl DriverHardware {
             },
             orientation,
         )
-        .await;
+        .await?;
 
         // Allocate the stack space for the clear row for the largest dimension
         let clear_row_buffer = [color.to_be_bytes(); if WIDTH > HEIGHT { WIDTH } else { HEIGHT }];
@@ -207,8 +215,10 @@ impl DriverHardware {
         let clear_row = clear_row_buffer[0..width].as_flattened();
 
         for _ in 0..height {
-            self.write_data(clear_row).await;
+            self.write_data(clear_row).await?;
         }
+
+        Ok(())
     }
 
     pub async fn draw_point_async(
@@ -217,7 +227,7 @@ impl DriverHardware {
         y: u16,
         color: Color,
         orientation: Orientation,
-    ) {
+    ) -> Result<(), spi::Error> {
         self.set_window(
             Window {
                 x_start: x,
@@ -227,8 +237,8 @@ impl DriverHardware {
             },
             orientation,
         )
-        .await;
-        self.write_data(&color.to_be_bytes()).await;
+        .await?;
+        self.write_data(&color.to_be_bytes()).await
     }
 }
 
@@ -255,7 +265,10 @@ pub const HEIGHT: usize = 240;
 // TODO: fix orientation bug
 
 impl Driver {
-    pub async fn init(hardware: DisplayHardware, orientation: Orientation) -> Driver {
+    pub async fn init(
+        hardware: DisplayHardware,
+        orientation: Orientation,
+    ) -> Result<Driver, spi::Error> {
         let driver_hardware = DriverHardware {
             spi: hardware.spi.into_async(),
             reset_pin: hardware.reset_pin,
@@ -270,26 +283,26 @@ impl Driver {
         };
 
         driver.hardware.reset();
-        driver.hardware.init_registers().await;
-        driver.hardware.set_orientation(orientation).await;
+        driver.hardware.init_registers().await?;
+        driver.hardware.set_orientation(orientation).await?;
 
-        driver
+        Ok(driver)
     }
 
-    pub async fn set_orientation(&mut self, orientation: Orientation) {
+    pub async fn set_orientation(&mut self, orientation: Orientation) -> Result<(), spi::Error> {
         self.orientation = orientation;
-        self.hardware.set_orientation(orientation).await;
+        self.hardware.set_orientation(orientation).await
     }
 
-    pub async fn clear_async(&mut self, color: Color) {
-        self.hardware.clear_async(color, self.orientation).await;
+    pub async fn clear_async(&mut self, color: Color) -> Result<(), spi::Error> {
+        self.hardware.clear_async(color, self.orientation).await
     }
 
-    async fn set_window(&mut self, window: Window) {
-        self.hardware.set_window(window, self.orientation).await;
+    async fn set_window(&mut self, window: Window) -> Result<(), spi::Error> {
+        self.hardware.set_window(window, self.orientation).await
     }
 
-    pub async fn full_flush(&mut self) {
+    pub async fn full_flush(&mut self) -> Result<(), spi::Error> {
         let (width, height) = self.orientation.dimensions();
 
         self.set_window(Window {
@@ -298,13 +311,15 @@ impl Driver {
             x_end: width as u16,
             y_end: height as u16,
         })
-        .await;
+        .await?;
 
         let bytes = self.framebuffer.data();
 
-        self.hardware.write_data(bytes).await;
+        self.hardware.write_data(bytes).await?;
 
         self.clear_dirty();
+
+        Ok(())
     }
 
     fn mark_dirty(&mut self, area: &Rectangle) {
@@ -325,7 +340,7 @@ impl Driver {
         self.dirty_rows.fill(false);
     }
 
-    pub async fn partial_flush(&mut self) {
+    pub async fn partial_flush(&mut self) -> Result<(), spi::Error> {
         let (width, height) = self.orientation.dimensions();
 
         let bytes_per_row = WIDTH * mem::size_of::<<Color as PixelColor>::Raw>();
@@ -351,14 +366,14 @@ impl Driver {
                     x_end: width as u16,
                     y_end: (end + 1) as u16,
                 })
-                .await;
+                .await?;
 
                 println!("WINDOW SET");
 
                 let bytes =
                     &self.framebuffer.data()[start * bytes_per_row..(end + 1) * bytes_per_row];
 
-                self.hardware.write_data(bytes).await;
+                self.hardware.write_data(bytes).await?;
 
                 println!("BYTES WRITTEN ");
             }
@@ -367,6 +382,8 @@ impl Driver {
         }
 
         self.clear_dirty();
+
+        Ok(())
     }
 }
 
@@ -388,7 +405,7 @@ impl DrawTarget for Driver {
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         self.framebuffer
-            .draw_iter(pixels.into_iter().inspect(|Pixel(point, color)| {
+            .draw_iter(pixels.into_iter().inspect(|Pixel(point, _)| {
                 let _ = point
                     .y
                     .try_into()
