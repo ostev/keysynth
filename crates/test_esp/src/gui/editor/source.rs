@@ -25,15 +25,6 @@ pub struct Source {
     pub lines: Vec<ByteString>,
 }
 
-// impl Default for Source {
-//     fn default() -> Self {
-//         Self {
-//             name: None,
-//             lines: vec![ByteString::new()],
-//         }
-//     }
-// }
-
 impl Source {
     pub fn new(name: Name) -> Self {
         Self {

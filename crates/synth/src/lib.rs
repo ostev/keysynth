@@ -20,6 +20,7 @@ mod voice;
 pub mod wavetable;
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 44_100;
+pub const MAX_RELEASE: f32 = 6.0;
 
 pub struct Synth<const N: usize, const S: usize> {
     pub wavetable: Wavetable<S>,
@@ -130,42 +131,6 @@ impl<const N: usize, const S: usize> Synth<N, S> {
 
         Ok(())
     }
-
-    // pub fn sample(&mut self) -> Sample {
-    //     let voices: heapless::Vec<&mut Voice<S>, N> = self
-    //         .voices
-    //         .iter_mut()
-    //         .filter_map(|option_voice| match option_voice {
-    //             Some(voice) => {
-    //                 if voice.is_ended() {
-    //                     *option_voice = None;
-    //                     None
-    //                 } else {
-    //                     // Some(voice.sample(&self.wavetables, 0.0))
-    //                     Some(voice)
-    //                 }
-    //             }
-    //             None => None,
-    //         })
-    //         .collect();
-    // .fold((0.0, 0usize), |(sum, count), sample| {
-    //     (sum + sample, count + 1)
-    // });
-
-    // let output = if count == 0 {
-    //     0.0
-    // } else {
-    //     (sum * self.voice_gain).clamp(-1.0, 1.0)
-    // };
-
-    // let sample = self
-    //     .vcf
-    //     .sample(output, self.cutoff, self.resonance)
-    //     .clamp(-1.0, 1.0);
-    // let integer_sample = (sample * i16::MAX as f32) as i16;
-
-    // [integer_sample, integer_sample]
-    // }
 
     pub fn sample_into(&mut self, buffer: &mut [Sample]) {
         let mut voices: heapless::Vec<&mut Voice<S>, N> = self

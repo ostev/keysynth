@@ -237,7 +237,7 @@ impl State {
                             self.synth.parameters.envelope.release =
                                 (self.synth.parameters.envelope.release
                                     + STEP * f32::from(direction))
-                                .clamp(0.0, 1.0);
+                                .clamp(0.0, synth::MAX_RELEASE);
                         }
                     },
                 };

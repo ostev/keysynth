@@ -31,6 +31,7 @@ impl SelectionRange {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct GapBuffer<const N: usize> {
     buffer: [ByteChar; N],
     cursor: Cursor,

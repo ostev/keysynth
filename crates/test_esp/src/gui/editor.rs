@@ -8,15 +8,10 @@ pub mod source;
 mod state;
 mod view;
 
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_gui::component::Component;
-use embedded_gui::component::group::Group;
-use embedded_gui::interactive::FocusState;
 use embedded_gui::layout::Direction;
 use embedded_gui::layout::IntrinsicSize;
 use embedded_gui::layout::Sizing;
-use embedded_gui::primitive::text::Text;
 use embedded_gui::signal::Reactive;
 use embedded_gui::signal::Signal;
 use embedded_gui::signal::SignalRef;
@@ -28,15 +23,9 @@ pub use state::Msg;
 pub use view::EditorView as View;
 
 use crate::gui;
-use crate::gui::colors;
 use crate::gui::display;
 use crate::gui::text_bar::OwnedTextBar;
 use crate::input::event::Event;
-use crate::text;
-use crate::text::FixedByteString;
-use crate::text::fixed_str;
-use crate::text::fixed_str_to_str;
-
 #[derive(Reactive)]
 pub struct Editor<'a> {
     state: SignalRef<'a, State>,
@@ -105,11 +94,6 @@ impl<'a>
                         },
                     )
                 }),
-                // v.background(
-                //     Sizing::Constrained(BAR_HEIGHT),
-                //     Signal::constant(colors::PURPLE),
-                //     [],
-                // ),
             ],
         )
     }

@@ -179,7 +179,9 @@ impl Home {
                                         v,
                                         focus_state,
                                         synth_parameters.map(|params| params.envelope.sustain),
-                                        synth_parameters.map(|params| params.envelope.release),
+                                        synth_parameters.map(|params| {
+                                            params.envelope.release / synth::MAX_RELEASE
+                                        }),
                                         SignalRef::constant(&"Sus"),
                                         SignalRef::constant(&"Rel"),
                                     )
