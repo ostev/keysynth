@@ -77,6 +77,8 @@ itertools = { version = "0.15.0", default-features = false }
 codespan = { version = "0.13.1", default-features = false }
 codespan-reporting = { version = "0.13.1", default-features = false }
 embedded-graphics-unicodefonts = "0.2.0"
+usbd-midi = "0.5.1"
+either = { version = "1.16.0", default-features = false }
 
 
 [patch.crates-io]

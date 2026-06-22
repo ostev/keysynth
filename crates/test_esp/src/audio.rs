@@ -34,13 +34,16 @@ pub enum Event {
         note: Note,
         is_pressed: bool,
     },
-    PanelUpdate {
+    PanelEncoderUpdate {
         direction: encoder::Direction,
         panel: encoder::Panel,
         id: encoder::PanelId,
     },
-    VoiceGainUpdate {
+    VoiceGainEncoderUpdate {
         direction: encoder::Direction,
+    },
+    SetVoiceGain {
+        gain: f32,
     },
 }
 
@@ -49,8 +52,8 @@ impl Event {
         match event {
             input::event::Event::Key { event, .. } => Event::from_key_event(event),
             input::event::Event::Encoder { id, direction } => match id {
-                encoder::Id::Primary => Some(Event::VoiceGainUpdate { direction }),
-                encoder::Id::Panel(panel_id) => Some(Event::PanelUpdate {
+                encoder::Id::Primary => Some(Event::VoiceGainEncoderUpdate { direction }),
+                encoder::Id::Panel(panel_id) => Some(Event::PanelEncoderUpdate {
                     direction,
                     panel,
                     id: panel_id,
@@ -194,7 +197,7 @@ impl State {
                     self.synth.note_off(note)
                 };
             }
-            Event::PanelUpdate {
+            Event::PanelEncoderUpdate {
                 direction,
                 panel,
                 id,
@@ -244,12 +247,17 @@ impl State {
 
                 let _ = gui::set_synth_parameters(self.synth.parameters);
             }
-            Event::VoiceGainUpdate { direction } => {
+            Event::VoiceGainEncoderUpdate { direction } => {
                 pub const GAIN_STEP: f32 = 0.02;
 
                 self.synth.parameters.voice_gain = (self.synth.parameters.voice_gain
                     + GAIN_STEP * f32::from(direction))
                 .clamp(0.0, 1.0);
+
+                let _ = gui::set_synth_parameters(self.synth.parameters);
+            }
+            Event::SetVoiceGain { gain } => {
+                self.synth.parameters.voice_gain = gain.clamp(0.0, 1.0);
 
                 let _ = gui::set_synth_parameters(self.synth.parameters);
             }

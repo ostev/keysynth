@@ -41,9 +41,13 @@ impl Note {
     pub fn from_semitones(semitones: f32, reference: Note) -> Note {
         Note::new(reference.frequency * powf(2.0, semitones / 12.0))
     }
+    /// Convert a note from its frequency to its corresponding MIDI number
+    pub fn from_midi_number(midi: u8) -> Note {
+        Note::from_semitones(midi as f32 - 69.0, Note::A4)
+    }
 
     /// Convert a note from its frequency to its corresponding MIDI number
-    pub fn midi_number(self) -> Option<u8> {
+    pub fn to_midi_number(self) -> Option<u8> {
         // Standard equal-temperament formula
         let midi = (69.0 + 12.0 * libm::log2f(self.frequency / 440.0)).round();
 
@@ -57,7 +61,7 @@ impl Note {
 
     /// Convert a note into its human-readable name
     pub fn to_name(self) -> Option<heapless::String<4>> {
-        let midi = self.midi_number()?;
+        let midi = self.to_midi_number()?;
 
         let octave = (midi / 12).saturating_sub(1);
         // Get the remainder
