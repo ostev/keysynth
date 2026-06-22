@@ -16,32 +16,52 @@ use crate::{
     },
     input::encoder,
     storage::{self, Files, LoadError, Storage, key_from_name},
-    text::{ByteString, Name, fixed_str_to_str},
+    text::{Name, fixed_str_to_str},
     usb,
 };
 
+/// The currently selected encoder control panel.
 static PANEL: Atomic<encoder::Panel> = Atomic::new(encoder::Panel::CutoffResonance);
 
+/// Get the currently selected encoder control panel.
 pub fn current_panel() -> encoder::Panel {
     PANEL.load(Ordering::Relaxed)
 }
 
+/// Side effects that may be performed in response to user actions.
+///
+/// Effects encapsulate asynchronous operations such as interacting with
+/// storage or updating global app state.
 pub(super) enum Effect {
+    /// Compile the source code into a wavetable and send it to the audio
+    /// engine.
     BuildWavetable(Name, String),
+    /// Save a file to flash.
     Save(Name, [u8; editor::MAX_SIZE]),
+    /// Load a file from flash.
     Load(Name),
+    /// Delete a file on flash.
     Delete(Name),
+    /// Rename a file on flash.
     Rename { old: Name, new: Name },
+    /// Fetch the list of files from flash.
     FetchFiles,
+    /// Update the active synth parameter control panel.
     SetPanel(encoder::Panel),
 }
 
+/// Context provided to effect handlers.
+///
+/// Owns the resources required to perform asynchronous effects.
 pub(super) struct Context {
+    /// Flash storage.
     pub storage: Storage,
+    /// Arena allocator used to store AST when compiling wavetables.
     pub ast_arena: Bump,
 }
 
 impl Context {
+    /// Save a file to flash.
     async fn save(&mut self, name: Name, bytes: [u8; MAX_SIZE]) -> Result<Name, LoadError> {
         let mut files = self.storage.fetch_files().await?;
 
@@ -59,6 +79,7 @@ impl Context {
         Ok(name)
     }
 
+    /// Save the file list metadata.
     async fn save_files(&mut self, files: &Files) -> Result<(), LoadError> {
         self.storage
             .save(
@@ -68,6 +89,7 @@ impl Context {
             .await
     }
 
+    /// Delete a source file from flash.
     async fn delete(&mut self, name: &Name) -> Result<(), LoadError> {
         let mut files = self.storage.fetch_files().await?;
 
@@ -77,6 +99,7 @@ impl Context {
         self.storage.delete(&key_from_name(name)).await
     }
 
+    /// Rename a source file while preserving its contents.
     async fn rename(&mut self, old_name: Name, new_name: Name) -> Result<(), LoadError> {
         let mut files = self.storage.fetch_files().await?;
 
@@ -102,6 +125,7 @@ impl Context {
         Ok(())
     }
 
+    /// Load a source file from flash.
     async fn load(&mut self, name: Name) -> Result<editor::source::Source, LoadError> {
         let serialized: [u8; MAX_SIZE] = self.storage.load(&key_from_name(&name)).await?;
 
@@ -113,6 +137,7 @@ impl embedded_gui::effect::Effect for Effect {
     type Msg = Msg;
     type Context = Context;
 
+    /// Execute the effect and return the resulting application message, if any.
     async fn run(self, context: &mut Context) -> Option<Msg> {
         let msg = match self {
             Effect::Save(name, bytes) => Msg::SaveCompleted(context.save(name, bytes).await),
@@ -185,6 +210,7 @@ impl embedded_gui::effect::Effect for Effect {
     }
 }
 
+/// Render an interpreter diagnostic into a human-readable error message.
 fn display_diagnostic(diagnostic: Diagnostic<()>, name: &Name, source_code: &str) -> String {
     codespan_reporting::term::emit_into_string(
         &codespan_reporting::term::Config::default(),

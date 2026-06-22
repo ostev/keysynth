@@ -1,7 +1,7 @@
 #![no_std]
 
 use defmt::Format;
-use enumflags2::{BitFlags, bitflags};
+use enumflags2::{BitFlags, bitflags, make_bitflags};
 use serde::{Deserialize, Serialize};
 
 pub mod encoder;
@@ -40,8 +40,8 @@ impl KeyboardStatus {
     }
 
     pub fn is_super(&self) -> bool {
-        self.modifier_bitfield.contains(Modifier::LeftSuper)
-            || self.modifier_bitfield.contains(Modifier::RightSuper)
+        self.modifier_bitfield
+            .intersects(make_bitflags!(Modifier::{LeftSuper | RightSuper}))
     }
 
     /// Returns the difference between this keyboard status and a previous one.

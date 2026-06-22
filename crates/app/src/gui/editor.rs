@@ -26,6 +26,8 @@ use crate::gui;
 use crate::gui::display;
 use crate::gui::text_bar::OwnedTextBar;
 use crate::input::event::Event;
+
+/// A multiline text editor.
 #[derive(Reactive)]
 pub struct Editor<'a> {
     state: SignalRef<'a, State>,
@@ -84,7 +86,9 @@ impl<'a>
         v.view(
             Direction::Vertical,
             [
+                // Bar at the top showing the file name
                 v.component(Sizing::Constrained(BAR_HEIGHT), OwnedTextBar { text }, []),
+                // The actual rendered text editor view
                 v.interactive(gui::FocusKey::Editor, Msg::from_event, |focus_state| {
                     v.primitive(
                         Sizing::Fill,

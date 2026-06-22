@@ -1,10 +1,7 @@
 use alloc::borrow::Cow;
 use embassy_time::Instant;
 use embedded_graphics::{
-    Drawable,
-    geometry::Point,
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    primitives::Rectangle,
+    Drawable, geometry::Point, mono_font::MonoTextStyle, primitives::Rectangle,
 };
 use embedded_gui::{
     layout::IntrinsicSize,
@@ -20,13 +17,18 @@ use embedded_text::{
 
 use crate::gui::{colors, display};
 
+/// A full-screen flash message.
 #[derive(Clone)]
 pub struct Message {
+    /// The message text.
     pub text: Cow<'static, str>,
+
+    /// The time at which the message was created.
     pub timestamp: Instant,
 }
 
 impl Message {
+    /// Create a new message with the current timestamp.
     pub fn now(text: Cow<'static, str>) -> Message {
         Message {
             text,
@@ -35,13 +37,17 @@ impl Message {
     }
 }
 
+/// Display a message as a full-screen splash.
 #[derive(Reactive)]
 pub struct View<'a> {
+    /// The message to display.
     pub message: SignalRef<'a, Message>,
+    /// The vertical scroll offset, measured in text lines.
     pub scroll: Signal<u16>,
 }
 
 impl<'a> IntrinsicSize for View<'a> {
+    /// Return the size of the display.
     fn intrinsic_size(&self) -> Size {
         Size::new(display::WIDTH as u16, display::HEIGHT as u16)
     }

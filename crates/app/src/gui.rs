@@ -46,7 +46,7 @@ use crate::{
             SelectFile,
             file_list::{FileEntry, FileList},
         },
-        text_bar::{OwnedTextBar, TextBar},
+        text_bar::OwnedTextBar,
     },
     input::{
         self,
@@ -133,7 +133,6 @@ enum AnyComponent<'a> {
     Button(Button<'a, display::Color, &'a str>),
     Group(Group),
     Editor(editor::Editor<'a>),
-    TextBar(TextBar<'a, &'a str>),
     OwnedTextBar4(OwnedTextBar<4>),
     OwnedTextBarName(OwnedTextBar<{ NAME_SIZE }>),
     Background(Background<display::Color>),

@@ -1,6 +1,12 @@
-use embedded_graphics::pixelcolor::{Rgb565, Rgb888, RgbColor};
+//! > The morning light is turning blue, the feeling is bizarre (Bizarre)
+//! > The night is almost over, I still don't know where you are
+//! > The shadows, yeah, they keep me pretty like a movie star
+//! > Daylight makes me feel like Dracula (Dracula)...
+//! > Run from the sun like Dracula!
+//! --- "Dracula" by Tame Impala
 
-// Dracula!!
+use embedded_graphics::pixelcolor::Rgb565;
+
 pub const ERROR: Rgb565 = to_rgb565(255, 85, 85);
 pub const TEXT: Rgb565 = to_rgb565(248, 248, 242);
 pub const LITERAL: Rgb565 = to_rgb565(255, 184, 108);

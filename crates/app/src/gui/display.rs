@@ -1,4 +1,4 @@
-use core::{convert::Infallible, mem};
+use core::convert::Infallible;
 
 use alloc::boxed::Box;
 use embassy_time::Timer;
@@ -8,19 +8,16 @@ use embedded_graphics::{
     framebuffer::buffer_size,
     geometry::{Dimensions, Point, Size},
     pixelcolor::{
-        PixelColor, Rgb565,
-        raw::{BigEndian, LittleEndian, RawU8, RawU16, ToBytes},
+        Rgb565,
+        raw::{BigEndian, RawU16, ToBytes},
     },
     primitives::Rectangle,
 };
-use embedded_gui::signal::Reactive;
-use embedded_hal::digital::OutputPin;
 use esp_hal::{
-    Async, Blocking, DriverMode,
-    gpio::{Output, dedicated::OutputDriver},
-    spi::{self, master::SpiDmaBus, slave::Spi},
+    Async, Blocking,
+    gpio::Output,
+    spi::{self, master::SpiDmaBus},
 };
-use esp_println::println;
 
 pub type Color = Rgb565;
 

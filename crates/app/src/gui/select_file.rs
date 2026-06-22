@@ -1,15 +1,13 @@
-use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii};
+use embedded_graphics::mono_font::{MonoTextStyleBuilder, ascii};
 use embedded_gui::{
     app::Change,
-    component::{Component, button::Button, group::Group},
     interactive::FocusState,
-    layout::{Direction, IntrinsicSize, Sizing},
+    layout::{Direction, Sizing},
     primitive::{spacer::Spacer, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
     size::Size,
     view::View,
 };
-use esp_println::println;
 use keyboard_protocol::{Key, StandardKey};
 
 pub mod file_list;
@@ -22,13 +20,11 @@ use crate::{
             line::{self, LineEditor},
         },
         effect::Effect,
-        event::{self},
         select_file::file_list::{FileList, ScrollDirection},
-        text_bar::{OwnedTextBar, TextBar},
     },
     input::event::{Event, KeyEvent},
     storage::{self, Files, LoadError, MAX_FILES},
-    text::{NAME_SIZE, Name, fixed_str},
+    text::{NAME_SIZE, Name},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -49,11 +45,19 @@ pub enum Msg {
     FilesReceived(Result<storage::Files, LoadError>),
 }
 
+/// State for the file selection page.
+///
+/// This page allows the user to create a new file, browse existing files,
+/// load a selected file, or delete a file.
 #[derive(Reactive, embedded_gui::app::State)]
 pub struct SelectFile {
+    /// The list of available files.
     files: Source<Result<heapless::Vec<Name, { MAX_FILES }>, LoadError>>,
+
+    /// The scroll offset of the list.
     scroll: Source<usize>,
 
+    /// State of the filename editor used when creating a new file.
     line_editor: Source<line::State<{ NAME_SIZE }>>,
 }
 
@@ -96,7 +100,7 @@ impl SelectFile {
 
                         return Change::new()
                             .with_focus_key_if_present(focus_key)
-                            .with_effect(Effect::Delete(name.clone()));
+                            .with_effect(Effect::Delete(name));
                     }
                 }
             }
@@ -109,13 +113,14 @@ impl SelectFile {
         Change::new()
     }
 
+    /// Scroll the file list in the specified direction.
     fn scroll(&mut self, direction: ScrollDirection) -> Option<FocusKey> {
         let num_files = self.files.as_ref().map(|files| files.len()).unwrap_or(0);
         if *self.scroll == 0 && direction == ScrollDirection::Up {
             Some(FocusKey::NewFile)
         } else if num_files > 0 {
             self.scroll.set_with(|scroll| match direction {
-                ScrollDirection::Down => (*scroll + 1).min(num_files.saturating_sub(1)).max(0),
+                ScrollDirection::Down => (*scroll + 1).min(num_files.saturating_sub(1)),
                 ScrollDirection::Up => scroll.saturating_sub(1),
             });
             Some(FocusKey::FileList(*self.scroll))

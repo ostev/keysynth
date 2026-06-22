@@ -1,21 +1,16 @@
 use embedded_graphics::{
-    mono_font::{
-        MonoTextStyleBuilder,
-        ascii::{FONT_6X12, FONT_10X20},
-    },
+    mono_font::{MonoTextStyleBuilder, ascii::FONT_10X20},
     text::renderer::TextRenderer,
 };
 use embedded_gui::{
     component::Component,
     interactive::FocusState,
     layout::{Direction, IntrinsicSize, Sizing},
-    primitive::{owned_text::OwnedText, spacer::Spacer},
+    primitive::owned_text::OwnedText,
     signal::{Reactive, Signal, SignalRef},
     size::Size,
-    view::Children,
 };
 
-use esp_println::println;
 use itertools::Itertools;
 use keyboard_protocol::{Key, StandardKey};
 

@@ -1,13 +1,8 @@
-use alloc::borrow::ToOwned;
-use embedded_graphics::mono_font::{
-    MonoTextStyle, MonoTextStyleBuilder,
-    ascii::{self, FONT_8X13_ITALIC, FONT_9X18_BOLD},
-};
+use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_9X18_BOLD};
 use embedded_gui::{
-    app::Change,
-    component::{Component, button::Button, group::Group},
+    app::{Change, State},
     interactive::FocusState,
-    layout::{Direction, IntrinsicSize, Sizing},
+    layout::{Direction, Sizing},
     primitive::{owned_text::OwnedText, spacer::Spacer, text::Text},
     signal::{Reactive, Signal, SignalRef, Source},
     size::Size,
@@ -20,21 +15,8 @@ use synth::note::Note;
 pub mod dial;
 
 use crate::{
-    audio::MAX_POLYPHONY,
-    gui::{
-        self, colors, display,
-        editor::{
-            self,
-            line::{self, LineEditor},
-        },
-        effect::Effect,
-        event,
-        select_file::file_list::{FileList, ScrollDirection},
-        text_bar::{OwnedTextBar, TextBar},
-    },
+    gui::{self, colors, display, editor, effect::Effect, event},
     input::{encoder, event::Event},
-    storage::{self, LoadError, MAX_FILES},
-    text::{NAME_SIZE, Name, fixed_str},
 };
 
 pub const PREVIEW_LINE_LENGTH: usize = 20;
@@ -51,19 +33,20 @@ impl Default for FocusKey {
 }
 
 pub enum Msg {
+    /// Change the selected synth parameter panel.
     SetPanel(encoder::Panel),
 }
 
-#[derive(Reactive, embedded_gui::app::State)]
-pub struct Home {
-    a: Source<f32>,
+#[derive(Reactive)]
+pub struct Home {}
+
+impl State for Home {
+    fn mark_resolved(&mut self) {}
 }
 
 impl Default for Home {
     fn default() -> Self {
-        Self {
-            a: Source::new(0.0),
-        }
+        Self {}
     }
 }
 
@@ -78,6 +61,8 @@ impl Home {
 }
 
 impl Home {
+    /// Displays the synthesizer controls, the currently played note, a preview of
+    /// the loaded program, and the voice gain control.
     pub fn view<'a>(
         &'a self,
         v: &'a embedded_gui::view::Factory<Event, gui::Msg, gui::FocusKey>,
@@ -93,8 +78,6 @@ impl Home {
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
     > {
-        const BAR_HEIGHT: u16 = 10;
-
         let style = Signal::constant(MonoTextStyle::new(&FONT_9X18_BOLD, colors::TEXT));
 
         v.view(
@@ -125,7 +108,7 @@ impl Home {
                                     |_| None,
                                 ),
                                 |focus_state| {
-                                    panel_with_background(
+                                    panel(
                                         v,
                                         focus_state,
                                         synth_parameters.map(|params| params.cutoff),
@@ -152,7 +135,7 @@ impl Home {
                                     |_| None,
                                 ),
                                 |focus_state| {
-                                    panel_with_background(
+                                    panel(
                                         v,
                                         focus_state,
                                         synth_parameters.map(|params| params.envelope.attack),
@@ -175,7 +158,7 @@ impl Home {
                                     |_| None,
                                 ),
                                 |focus_state| {
-                                    panel_with_background(
+                                    panel(
                                         v,
                                         focus_state,
                                         synth_parameters.map(|params| params.envelope.sustain),
@@ -253,14 +236,14 @@ impl Home {
                             v.spacer(),
                         ],
                     ),
-                    // v.spacer(),
                 ],
             )],
         )
     }
 }
 
-fn panel_with_background<'a>(
+/// Construct a panel containing two parameter controls that highlights itself when focused.
+fn panel<'a>(
     v: &'a embedded_gui::view::Factory<Event, gui::Msg, gui::FocusKey>,
     focus_state: Signal<FocusState>,
     param_1: Signal<f32>,
