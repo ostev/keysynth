@@ -1,11 +1,11 @@
 [package]
 edition = "2024"
-name = "test_esp"
+name = "app"
 rust-version = "1.88"
 version = "0.1.0"
 
 [[bin]]
-name = "test_esp"
+name = "app"
 path = "./src/bin/main.rs"
 test = false
 bench = false

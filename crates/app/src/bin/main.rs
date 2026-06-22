@@ -28,13 +28,13 @@ use embassy_time::{Duration, Ticker, Timer};
 use esp_println::println;
 use esp_rtos::embassy::{Executor, InterruptExecutor};
 use static_cell::StaticCell;
-use test_esp::gui::{colors, display};
-use test_esp::hardware::Hardware;
-use test_esp::input::encoder;
-use test_esp::input::keyboard::keyboard_interface;
+use app::gui::{colors, display};
+use app::hardware::Hardware;
+use app::input::encoder;
+use app::input::keyboard::keyboard_interface;
 
-use test_esp::{audio, input};
-use test_esp::{gui, usb};
+use app::{audio, input};
+use app::{gui, usb};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
