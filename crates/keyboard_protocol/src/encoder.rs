@@ -1,6 +1,7 @@
 use defmt::Format;
 use serde::{Deserialize, Serialize};
 
+/// Represents an encoder update from the RP2040
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Debug, Format)]
 pub struct Update {
     pub deltas: [i16; 2],

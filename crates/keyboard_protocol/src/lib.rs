@@ -1,19 +1,21 @@
 #![no_std]
 
 use defmt::Format;
-use enumflags2::{BitFlags, bitflags, make_bitflags};
+use enumflags2::{BitFlags, bitflags};
 use serde::{Deserialize, Serialize};
 
 pub mod encoder;
 pub mod layout;
 pub mod uart;
 
+/// Represents a keyboard status update from the RP2040 with encoder information.
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Debug)]
 pub struct KeyboardWithEncoderStatus {
     pub keyboard: KeyboardStatus,
     pub encoder: encoder::Update,
 }
 
+/// Represents what keys are pressed on the keyboard at any given moment.
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Debug)]
 pub struct KeyboardStatus {
     pub keys: [StandardKey; 6],
@@ -21,6 +23,7 @@ pub struct KeyboardStatus {
     pub special_bitfield: BitFlags<SpecialKey>,
 }
 
+/// Represents the difference between two keyboard statuses.
 pub struct KeyboardDiff<Added: Iterator<Item = Key>, Removed: Iterator<Item = Key>> {
     pub pressed: Added,
     pub released: Removed,
@@ -41,6 +44,7 @@ impl KeyboardStatus {
             || self.modifier_bitfield.contains(Modifier::RightSuper)
     }
 
+    /// Returns the difference between this keyboard status and a previous one.
     pub fn diff(
         self,
         previous: KeyboardStatus,
@@ -51,21 +55,25 @@ impl KeyboardStatus {
         let added_special = self.special_bitfield & !previous.special_bitfield;
         let removed_special = previous.special_bitfield & !self.special_bitfield;
 
+        // What standard keys have been added?
         let added_standard = self
             .keys
             .into_iter()
             .filter(move |key| !previous.keys.contains(key));
-        let removed_standard = previous
+        // What standard keys have been released?
+        let released_standard = previous
             .keys
             .into_iter()
             .filter(move |key| !self.keys.contains(key));
 
+        /// What keys have been pressed?
         let pressed = added_standard
             .map(|key| Key::Standard(key))
             .chain(added_modifiers.into_iter().map(Key::Modifier))
             .chain(added_special.into_iter().map(Key::Special));
 
-        let released = removed_standard
+        /// What keys have been released?
+        let released = released_standard
             .map(|key| Key::Standard(key))
             .chain(removed_modifiers.into_iter().map(Key::Modifier))
             .chain(removed_special.into_iter().map(Key::Special));
@@ -74,6 +82,7 @@ impl KeyboardStatus {
     }
 }
 
+/// Represents a modifier on the keyboard
 #[bitflags]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Format, Debug)]
@@ -88,6 +97,7 @@ pub enum Modifier {
     RightSuper = 0x80,
 }
 
+/// Represents a non-standard key on the keyboard
 #[bitflags]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Format, Debug)]
@@ -102,18 +112,7 @@ pub enum SpecialKey {
     Fn = 0x80,
 }
 
-impl SpecialKey {
-    // pub fn to_bitfield(keys: impl Iterator<Item = SpecialKey>) -> u8 {
-    //     keys.map(|key| key as u8)
-    //         .reduce(|key1, key2| key1 | key2)
-    //         .unwrap_or(0)
-    // }
-
-    // pub fn matches(self, bitfield: u8) -> bool {
-    //     (self as u8 & bitfield) != 0
-    // }
-}
-
+/// Represents a regular key on the keyboard
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Format)]
 pub enum StandardKey {
@@ -336,6 +335,8 @@ impl StandardKey {
         }
     }
 
+    /// Converts the key into its character representation according
+    /// to whether shift is pressed.
     pub fn to_char(self, is_shift: bool) -> Option<u8> {
         if is_shift {
             self.to_char_upper()
@@ -361,6 +362,8 @@ impl Key {
         }
     }
 }
+
+// === Convenience macros ===
 
 #[macro_export]
 macro_rules! standard {

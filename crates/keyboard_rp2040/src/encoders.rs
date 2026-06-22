@@ -1,9 +1,9 @@
 use defmt::println;
-use either::Either;
 use embedded_hal::digital::InputPin;
 use keyboard_protocol::encoder::Update;
-use rotary_encoder_hal::{DefaultPhase, Direction, Phase, Rotary};
+use rotary_encoder_hal::{DefaultPhase, Direction, Rotary};
 
+/// Represents a rotary encoder unit
 pub struct Unit<A: InputPin, B: InputPin> {
     rotary: Rotary<A, B, DefaultPhase>,
 }
@@ -26,6 +26,7 @@ impl<A1: InputPin, B1: InputPin, A2: InputPin, B2: InputPin> Hardware<A1, B1, A2
         Self { one, two }
     }
 
+    /// Scan the rotary encode units, returning an update if there is one.
     pub fn scan(&mut self) -> Update {
         let delta_one = match self.one.rotary.update() {
             Ok(direction) => direction_to_delta(direction),

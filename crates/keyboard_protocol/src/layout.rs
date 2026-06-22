@@ -1,5 +1,6 @@
-use crate::{Key, Modifier, modifier, special, standard};
+use crate::{Key, modifier, special, standard};
 
+/// Represents a keyboard layout
 pub struct Layout<const ROWS: usize, const COLUMNS: usize> {
     pub rows: [[Key; COLUMNS]; ROWS],
 }

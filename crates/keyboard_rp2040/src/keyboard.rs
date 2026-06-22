@@ -6,12 +6,14 @@ use keyboard_protocol::{Key, KeyboardStatus, StandardKey, layout::Layout};
 pub const NUM_ROWS: usize = 6;
 pub const NUM_COLUMNS: usize = 14;
 
+/// Represents a keyboard matrix in terms of row and column pins.
 pub struct HardwareLayout<const R: usize, const C: usize> {
     pub rows: [Input<'static>; R],
     pub columns: [Output<'static>; C],
 }
 
 impl<const R: usize, const C: usize> HardwareLayout<R, C> {
+    /// Scan the keyboard matrix and returning the pressed keys.
     pub fn scan(
         &mut self,
         layout: &Layout<R, C>,
@@ -26,7 +28,8 @@ impl<const R: usize, const C: usize> HardwareLayout<R, C> {
         for (column_index, column_output) in self.columns.iter_mut().enumerate() {
             column_output.set_high();
 
-            // Small delay required for pin state to change
+            // Small delay required for pin state to change---electricity isn't
+            // instant!
             embassy_time::block_for(Duration::from_micros(2));
 
             for (row_index, row_input) in self.rows.iter().enumerate() {
@@ -44,9 +47,11 @@ impl<const R: usize, const C: usize> HardwareLayout<R, C> {
                             }
                         }
                         Key::Modifier(modifier) => {
+                            // Add the modifier key to the bitfield
                             modifier_bitfield |= modifier;
                         }
                         Key::Special(special) => {
+                            // Add the special key to the bitfield
                             special_bitfield |= special;
                         }
                     }
@@ -64,9 +69,12 @@ impl<const R: usize, const C: usize> HardwareLayout<R, C> {
     }
 }
 
+/// Represents a key in the debouncing matrix
 #[derive(Copy, Clone)]
 struct DebouncedKey {
+    /// Is the key pressed in its debounced state?
     is_pressed: bool,
+    /// Represents the moment where the key last changed.
     last_changed: Instant,
 }
 impl DebouncedKey {
@@ -89,6 +97,7 @@ impl<const R: usize, const C: usize> Debouncer<R, C> {
         }
     }
 
+    /// Update the debouncing matrix from a new key state at the provided position.
     pub fn update(&mut self, row: usize, column: usize, raw_is_pressed: bool) -> bool {
         const INITIAL_DEBOUNCE_DURATION: Duration = Duration::from_millis(2);
         const DEFER_DEBOUNCE_DURATION: Duration = Duration::from_millis(3);
@@ -108,6 +117,7 @@ impl<const R: usize, const C: usize> Debouncer<R, C> {
         };
 
         if elapsed >= threshold {
+            // It's changed!
             key.is_pressed = raw_is_pressed;
             key.last_changed = Instant::now();
             raw_is_pressed
