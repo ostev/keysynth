@@ -163,28 +163,32 @@ impl fmt::Display for Type {
 
 /// A scope is defined as a stack of mappings between a name and a potentially evaluated value.
 /// When the code contains an identifier, the interpreter checks each scope in the stack
-/// (starting at the front) to see if it contains the identifier. If the identifier is a thunk
-/// (i.e. has not yet been evaluated because of assignment ordering), the assignment that
-/// references it will become a thunk.
+/// (starting at the front) to see if it contains the identifier.
 pub type Scopes<'a, 's> = rpds::List<rpds::HashTrieMap<&'s str, Value<'a, 's>>>;
 
 /// Represents the result of an interpreted expression, along with its scope.
 pub type EvalResult<'a, 's> = Result<(Value<'a, 's>, Scopes<'a, 's>), Error<'a, 's>>;
 
+/// Evaluates an expression within an empty scope.
 pub fn eval_root<'a, 's>(spanned: &'a Spanned<'a, 's>) -> Result<Value<'a, 's>, Error<'a, 's>> {
     let (value, _scopes) = eval(spanned, List::new())?;
     Ok(value)
 }
 
+/// Evaluates an expression with the provided scope.
 pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> EvalResult<'a, 's> {
     Ok(match &spanned.expr {
         Expr::Identifier(identifier) => {
+            // Search lexical scopes from innermost to outermost.
             let value = match scopes
                 .iter()
                 .find_map(|scope| scope.get(identifier).cloned())
             {
                 Some(defined_value) => Some(defined_value),
-                None => get_builtin(*identifier).map(Into::into),
+                None => {
+                    // We haven't found anything, so check if there's a builtin.
+                    get_builtin(*identifier).map(Into::into)
+                }
             }
             .ok_or(Error::new(
                 ErrorKind::IdentifierNotInScope(*identifier),
@@ -194,6 +198,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
             (value, scopes)
         }
         Expr::Literal(literal) => (
+            // Literals evaluate directly to their corresponding runtime value.
             match literal {
                 Literal::Number(number) => Value::Number(*number),
                 Literal::Boolean(boolean) => Value::Boolean(*boolean),
@@ -207,6 +212,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
         }) => {
             let (condition, _) = eval(predicate, scopes.clone())?;
 
+            // Evaluates only the branch that matches the predicate.
             let (value, _) = condition.flatmap_boolean(spanned.span(), |boolean| {
                 if boolean {
                     eval(if_true, scopes.clone())
@@ -219,6 +225,9 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
         }
         Expr::Function(function) => {
             let cloned_scopes = scopes.clone();
+
+            // Capture the current scope so the function retains access to
+            // variables that were in scope when it was defined.
             let f = move |callsite: Span, function_span: Span, args: Vec<Value<'a, 's>>| {
                 if args.len() != function.args.len() {
                     Err(Error::new(
@@ -230,6 +239,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                         callsite,
                     ))
                 } else {
+                    // Create a new scope containing the parameters.
                     let body_scope = scopes.clone().push_front(
                         function
                             .args
@@ -246,6 +256,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
             (Value::Function(Rc::new(f)), cloned_scopes)
         }
         Expr::Application(function_expr, args) => {
+            // Arguments are evaluated eagerly from left to right.
             let evaluated_args: Vec<Value<'a, 's>> = args
                 .iter()
                 .map(|arg| eval(arg, scopes.clone()).map(|(value, _)| value))
@@ -264,6 +275,8 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                         function(spanned.span(), function_expr.span(), evaluated_args)?;
                     (value, scopes)
                 }
+
+                // Error if the provided function value isn't callable
                 _ => Err(Error::new(
                     ErrorKind::Expected(Type::Function, function_value),
                     function_expr.span(),
@@ -271,6 +284,8 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
             }
         }
         Expr::Let(Let { assignments, body }) => {
+            // Build a new scope containing each assignment in order. Earlier bindings are
+            // visible to later assignments within the same let-expression.
             let new_scope = assignments.iter().try_fold(
                 HashTrieMap::new(),
                 |mut accumulated_scope, assignment| {
@@ -299,6 +314,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                             let dividend = x;
                             let divisor = y;
 
+                            // Error on invalid divisors instead of producing NaNs.
                             match divisor {
                                 0.0 => Err(Error::new(
                                     ErrorKind::DivisionByZero(right_expr.span()),
@@ -317,8 +333,11 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                             let integer_part = exponent.trunc();
 
                             if integer_part == exponent {
+                                // The fastest path
                                 Ok(base.powi(exponent as i32))
                             } else if integer_part == 0.0 && base < 0.0 {
+                                // The exponent is fractional and the base is negative, so it
+                                // could produce an imaginary number.
                                 Err(Error::new(
                                     ErrorKind::FractionalExponentWithNegativeBase {
                                         base,
@@ -357,6 +376,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                     let (left, _) = eval(left_expr, scopes.clone())?;
                     let (right, _) = eval(right_expr, scopes.clone())?;
 
+                    // You can only compare values of the same type.
                     match (&left, &right) {
                         (Value::Number(x), Value::Number(y)) => {
                             Ok(Value::Boolean(compare(comparison_op, x, y)))
@@ -366,6 +386,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
                             Ok(Value::Boolean(compare(comparison_op, x, y)))
                         }
 
+                        // You can't compare functions meaningfully.
                         (
                             Value::Function(_) | Value::BuiltinFunction(_),
                             Value::Function(_) | Value::BuiltinFunction(_),
@@ -393,6 +414,7 @@ pub fn eval<'a, 's>(spanned: &'a Spanned<'a, 's>, scopes: Scopes<'a, 's>) -> Eva
         Expr::UnaryOp(op, expr) => match op {
             UnaryOpKind::Negate => {
                 let (value, _) = eval(expr, scopes.clone())?;
+                // You can only negate numbers
                 let negated = value.map_number(expr.span(), ops::Neg::neg)?;
                 (negated, scopes)
             }

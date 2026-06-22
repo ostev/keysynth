@@ -41,10 +41,6 @@ extern {
     }
 }
 
-// pub Expr: Spanned<'a, 's> = {
-//     <start: @L> <expr: UnspannedExpr> <end: @R> => Spanned::new(start, end, expr)
-// }
-
 pub Expr: Spanned<'a, 's> = {
     #[precedence(level="0")]
     <start: @L> <term: Term> <end: @R> => Spanned::new(start, end, term),

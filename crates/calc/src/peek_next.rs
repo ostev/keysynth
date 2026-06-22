@@ -1,5 +1,4 @@
-use core::iter::FusedIterator;
-
+/// An iterator with support for looking ahead two values in the future.
 pub struct PeekableNext<I: Iterator> {
     iter: I,
 

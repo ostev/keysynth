@@ -1,19 +1,10 @@
 #![no_std]
 
-use core::f32;
-
-use alloc::rc::Rc;
-use bumpalo::{Bump, boxed::Box};
 use lalrpop_util::{ParseError, lalrpop_mod};
-use micromath::F32Ext;
-use rpds::{HashTrieMap, List, ht_map};
 
 use crate::{
-    interpreter::{OwnedValue, Value},
-    parser::{
-        ast::Span,
-        scanner::{self, Token},
-    },
+    interpreter::Value,
+    parser::scanner::{self, Token},
 };
 extern crate alloc;
 
@@ -28,15 +19,9 @@ lalrpop_mod!(
     grammar
 );
 
+/// Represents an error that can occur while executing the program.
 #[derive(Debug)]
 pub enum ExecutionError<'a, 's> {
     ParseError(ParseError<usize, Token<'s>, scanner::diagnostic::Error>),
     RuntimeError(interpreter::diagnostic::Error<'a, 's>),
 }
-
-// pub fn run<'s>(input: &'s str) -> Result<Option<OwnedValue>, ExecutionError<'_, 's>> {
-//     // let concrete = evaluated.as_concrete();
-
-//     // Ok(concrete)
-//     Ok(None)
-// }
