@@ -1,10 +1,11 @@
 use crate::{
     adsr::{Adsr, Envelope, TargetRatios},
     note,
-    oscillator::{self, WavetableOscillator},
+    oscillator::WavetableOscillator,
     wavetable::Wavetable,
 };
 
+/// Represents a sampler for a note that is being played
 #[derive(Clone, Debug)]
 pub struct Voice<const S: usize> {
     oscillator: WavetableOscillator<S>,
@@ -48,12 +49,14 @@ impl<const S: usize> Voice<S> {
         self.adsr.is_ended()
     }
 
+    /// Sample the voice with the provided wavetable
     pub fn sample(&mut self, wavetable: &Wavetable<S>) -> f32 {
         let sample = self.oscillator.sample(self.note.note, wavetable);
 
         sample * self.adsr.process() * self.gain
     }
 
+    /// Immediately release the note
     pub const fn release(&mut self) {
         self.adsr.release();
     }

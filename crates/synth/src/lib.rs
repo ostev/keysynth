@@ -10,10 +10,8 @@ use crate::{
 };
 
 pub mod adsr;
-mod arena;
 mod filters;
 pub mod keyboard;
-mod math;
 pub mod note;
 pub mod oscillator;
 mod voice;
@@ -22,6 +20,7 @@ pub mod wavetable;
 pub const DEFAULT_SAMPLE_RATE: u32 = 44_100;
 pub const MAX_RELEASE: f32 = 6.0;
 
+/// A synthesiser engine
 pub struct Synth<const N: usize, const S: usize> {
     pub wavetable: Wavetable<S>,
 
@@ -33,6 +32,7 @@ pub struct Synth<const N: usize, const S: usize> {
     pub parameters: Parameters,
 }
 
+/// Represents the synthesiser's changeable parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Parameters {
     pub cutoff: f32,
@@ -61,7 +61,11 @@ impl Default for Parameters {
 
 #[derive(Clone, Copy, Debug)]
 pub enum PlayError {
+    /// Occurs when we have reached max polyphony and a note
+    /// is added.
     NoFreeVoice,
+    /// Occurs when a note is ended, but we weren't playing
+    /// that note to begin with.
     NoMatchingVoice,
 }
 
@@ -78,11 +82,15 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         }
     }
 
+    /// Start playing a given note
     pub fn note_on(&mut self, note: Event) -> Result<(), PlayError> {
         let (matching_voice, ended_voice, inactive_voice) = self.voices.iter_mut().fold(
             (None, None, None),
             |(matching_voice, ended_voice, inactive_voice), voice| match voice {
                 Some(unwrapped_voice) => {
+                    // If we find another voice playing the same note, replace that.
+                    // Otherwise, if we find an ended voice, fill that slot.
+                    // Otherwise, if we find an inactive voice, fill that slot.
                     if unwrapped_voice.note().note == note.note {
                         (Some(voice), ended_voice, inactive_voice)
                     } else if !unwrapped_voice.is_active() {
@@ -112,6 +120,7 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         }
     }
 
+    /// Stop playing the provided note
     pub fn note_off(&mut self, note: Note) -> Result<(), PlayError> {
         let voice = self
             .voices
@@ -132,6 +141,7 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         Ok(())
     }
 
+    /// Sample the synthesiser into the provided buffer slice.
     pub fn sample_into(&mut self, buffer: &mut [Sample]) {
         let mut voices: heapless::Vec<&mut Voice<S>, N> = self
             .voices
@@ -162,6 +172,7 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         }
     }
 
+    /// Sample the provided voices of the synthesiser
     fn sample_voices<'a>(
         vcf: &mut Vcf,
         wavetable: &Wavetable<S>,
@@ -179,12 +190,14 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         (with_vcf * i16::MAX as f32) as i16
     }
 
+    /// Sample the synthesiser many times, producing a buffer array.
     pub fn sample_many<const BUFFER_SIZE: usize>(&mut self) -> [Sample; BUFFER_SIZE] {
         let mut buffer = [0; BUFFER_SIZE];
         self.sample_into(&mut buffer);
         buffer
     }
 
+    /// Is any sound playing right now?
     pub fn is_active(&mut self) -> bool {
         self.voices
             .iter()

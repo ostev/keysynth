@@ -14,42 +14,16 @@ impl Key {
     }
 }
 
-pub struct Keyboard {
-    // size: (u32, u32),
-}
-
-impl Keyboard {
-    pub const fn new(size: (u32, u32)) -> Option<Keyboard> {
-        // if size.0 == 0 || size.1 == 0 {
-        //     None
-        // } else {
-        //     Some(Keyboard { size })
-        // }
-        Some(Keyboard {})
-    }
-}
-
+/// Calculates the semitone offset represented by a given key.
 pub fn semitone_offset_of(key: Key) -> Option<u32> {
-    // let (width, height) = self.size;
-    // let (row_offset, column_offset) = self.offset;
-
-    // let translated_key = {
-    //     // let row = key.row.checked_sub(row_offset)?;
-    //     // let column = key.column.checked_sub(column_offset)?;
-
-    //     if row >= height || column >= width {
-    //         None
-    //     } else {
-    //         Some(Key::new(row, column))
-    //     }
-    // }?;
-
     const COLUMN_INTERVAL: u32 = 3;
     const ROW_INTERVAL: u32 = 1;
 
     Some(key.row * ROW_INTERVAL + key.column * COLUMN_INTERVAL)
 }
 
+/// Calculates the note represented by a given key offset from a reference
+/// frequency.
 pub fn note_of(key: Key, reference: Note) -> Option<Note> {
     semitone_offset_of(key).map(|semitones| Note::from_semitones(semitones as f32, reference))
 }

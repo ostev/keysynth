@@ -1,17 +1,20 @@
 use libm::powf;
 use micromath::F32Ext;
 
-pub(crate) mod estimation;
-
+/// Represents a note and the moment at which it was played.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Event {
+    /// The note played at the time of the event.
     pub note: Note,
-    /// A timestamp in microseconds. Ensure that the timebase is consistent.
+    /// A timestamp in microseconds. Ensure that the timebase is consistent, otherwise you'll run
+    /// into some strange behaviour.
     pub timestamp: u64,
 }
 
+/// Represents a note in terms of its frequency.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Note {
+    /// The frequency of the note.
     pub frequency: f32,
 }
 
@@ -38,6 +41,7 @@ impl Note {
         Note { frequency }
     }
 
+    /// Create a note from a semitone offset from a reference note.
     pub fn from_semitones(semitones: f32, reference: Note) -> Note {
         Note::new(reference.frequency * powf(2.0, semitones / 12.0))
     }
@@ -49,11 +53,11 @@ impl Note {
     /// Convert a note from its frequency to its corresponding MIDI number
     pub fn to_midi_number(self) -> Option<u8> {
         // Standard equal-temperament formula
-        let midi = (69.0 + 12.0 * libm::log2f(self.frequency / 440.0)).round();
+        let converted = (69.0 + 12.0 * libm::log2f(self.frequency / 440.0)).round();
 
-        if midi >= 0.0 && midi <= 127.0 {
+        if converted >= 0.0 && converted <= 127.0 {
             // It's within the MIDI note range
-            Some(midi as u8)
+            Some(converted as u8)
         } else {
             None
         }
@@ -65,9 +69,9 @@ impl Note {
 
         let octave = (midi / 12).saturating_sub(1);
         // Get the remainder
-        let note = midi % 12;
+        let semitone_offset = midi % 12;
 
-        Some(heapless::format!("{}{}", NAMES[note as usize], octave).unwrap())
+        Some(heapless::format!("{}{}", NAMES[semitone_offset as usize], octave).unwrap())
     }
 }
 

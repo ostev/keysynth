@@ -1,3 +1,4 @@
+/// A voltage-controlled filter (VCF) implementation based on a Moog VCF filter.
 #[derive(Clone, Copy)]
 pub struct Vcf {
     in1: f32,
@@ -27,7 +28,9 @@ impl Vcf {
 
     pub const fn sample(&mut self, input: f32, cutoff: f32, resonance: f32) -> f32 {
         // The following code is a translation of the Moog VCF filter
-        // found at https://www.musicdsp.org/en/latest/Filters/26-moog-vcf-variation-2.html
+        // found at https://www.musicdsp.org/en/latest/Filters/26-moog-vcf-variation-2.html.
+        // To be honest, I'm not completely sure what all of the variables represent, but it
+        // does sound nice. :)
         const IN_MULTIPLIER: f32 = 0.3;
 
         let f = cutoff * 1.16;

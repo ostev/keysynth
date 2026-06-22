@@ -1,15 +1,7 @@
-use embassy_executor::task;
 use embassy_rp::gpio::{Input, Output};
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Receiver, Sender},
-};
 use embassy_time::{Duration, Instant};
 use enumflags2::BitFlags;
-use keyboard_protocol::{
-    Key, KeyboardStatus, StandardKey,
-    layout::{self, Layout},
-};
+use keyboard_protocol::{Key, KeyboardStatus, StandardKey, layout::Layout};
 
 pub const NUM_ROWS: usize = 6;
 pub const NUM_COLUMNS: usize = 14;

@@ -1,5 +1,6 @@
 use crate::{note::Note, wavetable::Wavetable};
 
+/// Represents an oscillator that produces audio by sampling a wavetable.
 #[derive(Clone, Copy, Debug)]
 pub struct WavetableOscillator<const S: usize> {
     sample_rate_reciprocal: f32,
@@ -14,6 +15,7 @@ impl<const S: usize> WavetableOscillator<S> {
         }
     }
 
+    /// Sample the oscillator with a given note and provided wavetable.
     pub const fn sample(&mut self, note: Note, wavetable: &Wavetable<S>) -> f32 {
         let increment =
             note.frequency * wavetable.samples.len() as f32 * self.sample_rate_reciprocal;
@@ -24,6 +26,7 @@ impl<const S: usize> WavetableOscillator<S> {
         sample
     }
 
+    /// Linearly interpolate between wavetable samples
     const fn lerp(&self, wavetable: &Wavetable<S>) -> f32 {
         let truncated_index = self.index as usize;
         let next_index = (truncated_index + 1) % wavetable.samples.len();

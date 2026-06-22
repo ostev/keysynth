@@ -1,7 +1,6 @@
 use core::f32;
 
-use crate::note::Note;
-
+/// Represents a collection of wavetable samples
 #[derive(Clone, Debug)]
 pub struct Wavetable<const S: usize> {
     pub samples: [f32; S],
@@ -12,6 +11,7 @@ pub const DEFAULT_SIZE: usize = 2048;
 pub type DefaultWavetable = Wavetable<DEFAULT_SIZE>;
 
 impl<const S: usize> Wavetable<S> {
+    /// Create a wavetable by sampling the provided function
     pub fn from_fn(mut generator: impl FnMut(f32) -> f32) -> Self {
         let phase_per_index = 2.0 * f32::consts::PI / S as f32;
         Self {
@@ -19,6 +19,8 @@ impl<const S: usize> Wavetable<S> {
         }
     }
 
+    /// Attempt to create a wavetable by sampling the provided fallible function, returning early
+    /// if it errors
     pub fn try_from_fn<E>(mut generator: impl FnMut(f32) -> Result<f32, E>) -> Result<Self, E> {
         let phase_per_index = 2.0 * f32::consts::PI / S as f32;
 
