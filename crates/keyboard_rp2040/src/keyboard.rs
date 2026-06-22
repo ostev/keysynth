@@ -78,7 +78,7 @@ struct DebouncedKey {
     last_changed: Instant,
 }
 impl DebouncedKey {
-    pub fn new(is_pressed: bool) -> DebouncedKey {
+    pub fn new() -> DebouncedKey {
         DebouncedKey {
             is_pressed: false,
             last_changed: Instant::now(),
@@ -93,7 +93,7 @@ pub struct Debouncer<const R: usize, const C: usize> {
 impl<const R: usize, const C: usize> Debouncer<R, C> {
     pub fn new() -> Self {
         Self {
-            keys: core::array::repeat(core::array::repeat(DebouncedKey::new(false))),
+            keys: core::array::repeat(core::array::repeat(DebouncedKey::new())),
         }
     }
 
