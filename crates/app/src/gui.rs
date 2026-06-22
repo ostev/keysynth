@@ -1,39 +1,21 @@
-use core::{
-    ops::Deref,
-    sync::atomic::{self, AtomicBool},
-};
+use core::sync::atomic::{self, AtomicBool};
 
 use alloc::{borrow::Cow, format, string::String};
 use bumpalo::Bump;
 use embassy_executor::task;
-use embassy_futures::select::{Either, Either3, select, select3};
+use embassy_futures::select::{Either3, select3};
 use embassy_time::{Duration, Instant};
-use embedded_graphics::{
-    draw_target::DrawTarget,
-    geometry::Point,
-    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_10X20},
-    pixelcolor::{Rgb565, RgbColor},
-    primitives::Rectangle,
-};
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_gui::{
     app::{App, Change, State},
     component::{any_component, background::Background, button::Button, group::Group},
-    draw::LocalTarget,
-    interactive::FocusState,
     layout::{Direction, Sizing},
-    position::Position,
     primitive::{any_primitive, owned_text::OwnedText, text::Text},
-    signal::{Reactive, Signal, SignalRef, Source},
-    size::Size,
+    signal::{Reactive, Source},
 };
 use esp_println::println;
-use esp_storage::FlashStorageError;
 use esp_sync::RawMutex;
-use heapless::sorted_linked_list::SortedLinkedList;
-use keyboard_protocol::{
-    Key, KeyboardDiff, KeyboardStatus, Modifier,
-    StandardKey::{self, P},
-};
+use keyboard_protocol::{Key, StandardKey};
 
 mod background;
 pub mod colors;
@@ -53,10 +35,7 @@ use crate::{
     concurrency::receive_all,
     gui::{
         display::DisplayHardware,
-        editor::{
-            MAX_SIZE,
-            line::{self, LineEditor},
-        },
+        editor::{MAX_SIZE, line::LineEditor},
         effect::Effect,
         home::{
             Home,
@@ -78,6 +57,7 @@ use crate::{
     text::{NAME_SIZE, Name},
 };
 
+/// Receives input events.
 mod input_channel {
     use crate::{channel, input};
 
@@ -86,25 +66,32 @@ mod input_channel {
 
 pub use input_channel::sender as input_sender;
 
+/// Receives updated synth parameters.
 static SYNTH_PARAMETERS: embassy_sync::signal::Signal<RawMutex, synth::Parameters> =
     embassy_sync::signal::Signal::new();
 
+/// Set the new synth parameters to be shown in the GUI.
 pub fn set_synth_parameters(parameters: synth::Parameters) {
     SYNTH_PARAMETERS.signal(parameters);
 }
 
+/// Receives a new note when it's first pressed.
 static NEW_NOTE: embassy_sync::signal::Signal<RawMutex, Note> = embassy_sync::signal::Signal::new();
 
+/// Set the note that was just pressed to be displayed in the GUI.
 pub fn set_new_note(note: Note) {
     NEW_NOTE.signal(note);
 }
 
+/// Represents whether the GUI is currently capturing all keyboard input. This is updated when the page changes.
 static IS_CAPTURING_ALL_KEYBOARD_INPUT: AtomicBool = AtomicBool::new(false);
 
+/// Represents whether the GUI is currently capturing all keyboard input.
 fn is_capturing_all_keyboard_input() -> bool {
     IS_CAPTURING_ALL_KEYBOARD_INPUT.load(atomic::Ordering::Relaxed)
 }
 
+/// Will the GUI capture this event?
 pub fn is_capturing(event: &Event) -> bool {
     match event {
         Event::Key { keyboard, event } => {
@@ -119,6 +106,7 @@ pub fn is_capturing(event: &Event) -> bool {
     }
 }
 
+/// Represents what is actively focused in the GUI.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum FocusKey {
     Editor,
@@ -138,6 +126,7 @@ impl From<select_file::FocusKey> for FocusKey {
     }
 }
 
+/// Represents all the components in the app.
 #[derive(Reactive)]
 #[any_component(target = display::Driver, event = input::event::Event, msg = Msg, focus_key = FocusKey)]
 enum AnyComponent<'a> {
@@ -154,6 +143,7 @@ enum AnyComponent<'a> {
     DialPanel(dial::Panel),
 }
 
+/// Represents all the primitives in the app.
 #[derive(Reactive)]
 #[any_primitive(target = display::Driver)]
 enum AnyPrimitive<'a> {
@@ -169,6 +159,7 @@ enum AnyPrimitive<'a> {
     Dial(Dial),
 }
 
+/// The currently active page of the GUI.
 enum Page {
     SelectFile(select_file::SelectFile),
     Editor,
@@ -176,6 +167,7 @@ enum Page {
 }
 
 impl Page {
+    /// Change the current page, running any relevant effects.
     fn change(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
         let (is_capturing, change) = match &page {
             Page::SelectFile(_) => (
@@ -201,7 +193,6 @@ impl Page {
     }
 }
 
-// TODO: implement derive macro for enums
 impl State for Page {
     fn mark_resolved(&mut self) {
         match self {
@@ -221,11 +212,14 @@ struct Gui {
 
     editor: Source<Option<editor::State>>,
 
+    /// The flash message text to display (if there is any)
     message: Source<Option<Message>>,
+    /// The scroll position of the message text
     message_scroll: Source<u16>,
 }
 
 impl Gui {
+    /// Update the flash message and reset its scroll position.
     fn set_message(&mut self, message: Option<Message>) {
         self.message_scroll.set(0);
         self.message.set(message);
@@ -246,7 +240,6 @@ impl App for Gui {
     fn new() -> Self {
         Self {
             page: Source::new(Page::Home(Home::default())),
-            // page: Source::new(Page::SelectFile(SelectFile::default())),
             message: Source::new(None),
             message_scroll: Source::new(0),
 
@@ -261,12 +254,14 @@ impl App for Gui {
     }
 
     fn background_color() -> Rgb565 {
-        Rgb565::BLACK
+        colors::BACKGROUND_DARK
     }
 
     fn global_event_handler(&self, event: Event) -> Option<Msg> {
         event::on_keydown(
             |key| match key {
+                // If a flash message is displayed, scroll it on up/down arrow keys
+                // and clear it on any other key.
                 Key::Standard(StandardKey::Down) => {
                     if self.message.is_some() {
                         Some(Msg::ScrollMessage(1))
@@ -289,6 +284,7 @@ impl App for Gui {
                     }
                 }
             },
+            // Global keyboard shortcuts:
             |key| match key {
                 Key::Standard(StandardKey::E) => match *self.page {
                     Page::Editor => Some(Msg::ChangePage(Page::Home(home::Home::default()))),
@@ -310,7 +306,9 @@ impl App for Gui {
     }
 
     fn update(&mut self, msg: Self::Msg) -> Change<Msg, FocusKey, Effect> {
-        const NEW_NOTE_DISPLAY_DURATION: Duration = Duration::from_secs(1);
+        // Clear the newly-pressed note if it's been displayed for more than
+        // a certain amount of time.
+        const NEW_NOTE_DISPLAY_DURATION: Duration = Duration::from_secs(2);
 
         if let Some((_, start)) = *self.new_note {
             if start.elapsed() > NEW_NOTE_DISPLAY_DURATION {
@@ -318,19 +316,8 @@ impl App for Gui {
             }
         }
 
-        // const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_secs(10);
-
-        // let is_message_old = self
-        //     .message
-        //     .as_ref()
-        //     .map(|message| message.timestamp.elapsed() > MESSAGE_DISPLAY_DURATION)
-        //     .unwrap_or(false);
-
-        // if is_message_old {
-        //     self.message.set(None);
-        // }
-
         match msg {
+            // Msg directed toward a subpage
             Msg::Page(page_msg) => {
                 return self.page.update(|page| match (page, page_msg) {
                     (Page::Home(state), PageMsg::Home(home_msg)) => state.update(home_msg),
@@ -356,6 +343,7 @@ impl App for Gui {
                 self.set_message(None);
             }
 
+            // A file has loaded
             Msg::LoadCompleted(result) => match result {
                 Ok(source) => {
                     self.editor
@@ -371,6 +359,7 @@ impl App for Gui {
                     self.set_message(Some(Message::now(text)));
                 }
             },
+            // File save finished
             Msg::SaveCompleted(result) => match result {
                 Ok(name) => {
                     let name = str::from_utf8(&name);
@@ -399,6 +388,7 @@ impl App for Gui {
                     self.set_message(Some(Message::now(text)));
                 }
             },
+            // File delete finished
             Msg::DeleteCompleted(result) => match result {
                 Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
                 Err(error) => {
@@ -409,6 +399,7 @@ impl App for Gui {
                     self.set_message(Some(Message::now(text)));
                 }
             },
+            // File rename finished
             Msg::RenameCompleted(result) => match result {
                 Ok(_) => return Change::new().with_effect(Effect::FetchFiles),
                 Err(error) => {
@@ -420,9 +411,11 @@ impl App for Gui {
                 }
             },
 
+            // Update the current focus
             Msg::ChangeFocus(focus) => {
                 return Change::new().with_focus_key(focus);
             }
+            // Update the current page
             Msg::ChangePage(new_page) => {
                 return self.page.update(|page| page.change(new_page));
             }
@@ -443,6 +436,7 @@ impl App for Gui {
                 }
             },
 
+            // Save the currently active file, if there is one.
             Msg::SaveFile => {
                 if let Some(editor) = self.editor.as_ref() {
                     let mut buffer = [0; MAX_SIZE];
@@ -463,6 +457,7 @@ impl App for Gui {
                 }
             }
 
+            // Build the currently active wavetable, if there is one.
             Msg::BuildWavetable => {
                 if let Some(editor) = self.editor.as_ref() {
                     return Change::new().with_effect(Effect::BuildWavetable(
@@ -492,6 +487,7 @@ impl App for Gui {
         Self::AnyPrimitive<'a>,
     > {
         if let Some(message) = self.message.option_signal_ref() {
+            // Show the flash message. This takes priority over everything else.
             v.view(
                 Direction::Horizontal,
                 [v.primitive(
@@ -504,6 +500,7 @@ impl App for Gui {
             )
         } else {
             match &*self.page {
+                // Home page
                 Page::Home(home) => home.view(
                     v,
                     self.editor.signal_ref(),
@@ -512,7 +509,9 @@ impl App for Gui {
                         .signal()
                         .map(|new_note| new_note.map(|(note, _)| note)),
                 ),
+                // Select file page
                 Page::SelectFile(state) => state.view(v),
+                // Text editor page
                 Page::Editor => {
                     let editor = v.interactive(
                         FocusKey::Editor,
@@ -536,6 +535,7 @@ impl App for Gui {
     }
 }
 
+/// A msg directed toward a subpage.
 enum PageMsg {
     Editor(editor::Msg),
     Home(home::Msg),
@@ -593,15 +593,12 @@ impl From<home::Msg> for Msg {
     }
 }
 
+/// The GUI app task.
+///
+/// This should be run in a thread-mode executor, as otherwise rendering will block interrupts for a while.
 #[task]
 pub async fn app(display: DisplayHardware, storage: StorageHardware) {
     let mut gui = Gui::new();
-
-    // display.driver.display_on().unwrap();
-    // display.driver.set_brightness(0xff).unwrap();
-
-    // let Ok(_) = display.driver.clear(Gui::background_color());
-    // display.driver.full_flush().await;
 
     let mut driver = display::Driver::init(display, display::Orientation::Horizontal)
         .await
@@ -638,6 +635,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
 
         match events {
             Either3::First(input_events) => {
+                // Dispatch these input events
                 embedded_gui::app::dispatch(
                     &mut gui,
                     &mut effect_context,
@@ -647,6 +645,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 .await;
             }
             Either3::Second(synth_parameters) => {
+                // Update synth params
                 embedded_gui::app::dispatch_msg(
                     &mut gui,
                     &mut effect_context,
@@ -656,6 +655,7 @@ pub async fn app(display: DisplayHardware, storage: StorageHardware) {
                 .await;
             }
             Either3::Third(new_note) => {
+                // Update new note
                 embedded_gui::app::dispatch_msg(
                     &mut gui,
                     &mut effect_context,

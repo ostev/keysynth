@@ -3,6 +3,7 @@ use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
 
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 16;
 
+/// Convenience macro to create a channel with paired senders and receivers.
 #[macro_export]
 macro_rules! channel {
     ($message:ty) => {
@@ -54,6 +55,7 @@ macro_rules! channel {
     };
 }
 
+/// Receive all the contents of a channel, awaiting the first value.
 pub async fn receive_all<'ch, M: RawMutex, T, const N: usize>(
     receiver: &Receiver<'ch, M, T, N>,
 ) -> impl Iterator<Item = T> {
@@ -61,6 +63,7 @@ pub async fn receive_all<'ch, M: RawMutex, T, const N: usize>(
     iter::once(first_message).chain(try_receive_all(&receiver))
 }
 
+/// Attempt to receive all the contents of a channel if there are any.
 pub fn try_receive_all<'ch, M: RawMutex, T, const N: usize>(
     receiver: &Receiver<'ch, M, T, N>,
 ) -> impl Iterator<Item = T> {

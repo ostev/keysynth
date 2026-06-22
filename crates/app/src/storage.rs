@@ -1,28 +1,11 @@
-mod output {
-    use crate::{channel, storage::SaveResult};
-
-    channel!(SaveResult);
-}
-
-pub use output::receiver;
-
-use core::cell::OnceCell;
-
-use alloc::sync::Arc;
 use embassy_embedded_hal::adapter::BlockingAsync;
-use embassy_executor::task;
-use embassy_sync::{mutex::Mutex, once_lock::OnceLock};
-use embedded_storage_async::nor_flash::NorFlash;
 use esp_storage::{FlashStorage, FlashStorageError};
-use esp_sync::RawMutex;
-use heapless::index_set::FnvIndexSet;
 use sequential_storage::{
     cache::PageStateCache,
     map::{MapConfig, MapStorage},
 };
-use serde::{Deserialize, Serialize};
 
-use crate::text::{ByteChar, FixedByteString, NAME_SIZE, Name};
+use crate::text::{ByteChar, NAME_SIZE, Name};
 
 pub const BUFFER_SIZE: usize = 8 * 1024;
 
@@ -102,8 +85,6 @@ pub enum LoadError {
     Serialization(postcard::Error),
     TooManyFiles,
 }
-
-const FILES_SIZE: usize = 3 * 1024;
 
 pub struct Storage {
     data_buffer: [u8; BUFFER_SIZE],

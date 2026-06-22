@@ -1,20 +1,10 @@
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::Instant;
 
-use esp_hal::{interrupt::software::SoftwareInterrupt, peripherals::CPU_CTRL};
-use esp_println::println;
-use esp_rtos::embassy::Executor;
 use keyboard_protocol::StandardKey;
-use static_cell::StaticCell;
-use synth::{
-    Parameters, Sample, Synth,
-    note::{self, Note},
-    wavetable::Wavetable,
-};
-use usb_device::class::UsbClass;
+use synth::{Parameters, Sample, Synth, note::Note, wavetable::Wavetable};
 use usbd_audio::AudioClass;
 
 use crate::{
-    concurrency::try_receive_all,
     gui,
     input::{
         self,
@@ -24,30 +14,35 @@ use crate::{
     usb::{self},
 };
 
+/// The maximum number of notes that can be played simultaneously.
 pub const MAX_POLYPHONY: usize = 4;
+
+/// The number of samples in the synthesizer wavetable.
+
 pub const WAVETABLE_SIZE: usize = 2048;
 
+/// The lowest note produced by the keyboard layout.
 const BASE_NOTE: Note = Note::C3;
 
+/// An event that modifies the synthesizer state.
 pub enum Event {
-    Note {
-        note: Note,
-        is_pressed: bool,
-    },
+    /// Starts or stops a note.
+    Note { note: Note, is_pressed: bool },
+    /// Updates a parameter controlled by the secondary or tertiary encoders.
     PanelEncoderUpdate {
         direction: encoder::Direction,
         panel: encoder::Panel,
         id: encoder::PanelId,
     },
-    VoiceGainEncoderUpdate {
-        direction: encoder::Direction,
-    },
-    SetVoiceGain {
-        gain: f32,
-    },
+    /// Updates the voice gain, controlled by the primary encoder.
+    VoiceGainEncoderUpdate { direction: encoder::Direction },
+    /// Sets the voice gain directly.
+    SetVoiceGain { gain: f32 },
 }
 
 impl Event {
+    /// Converts an input event into a synthesizer event, returning `None` if the input event does
+    /// not affect the synthesizer.
     pub fn from_event(panel: encoder::Panel, event: input::event::Event) -> Option<Event> {
         match event {
             input::event::Event::Key { event, .. } => Event::from_key_event(event),
@@ -62,6 +57,8 @@ impl Event {
         }
     }
 
+    /// Converts an input event into a synthesizer event, returning `None` if the key is not mapped
+    /// to a synth function
     fn from_key_event(event: KeyEvent) -> Option<Event> {
         match event {
             KeyEvent::Pressed(keyboard_protocol::Key::Standard(key)) => {
@@ -85,9 +82,9 @@ impl Event {
     }
 }
 
-// const KEYBOARD: synth::keyboard::Keyboard =
-//     synth::keyboard::Keyboard::new((0, 0), (10, 4)).unwrap();
-
+/// Converts a key into its corresponding position
+///
+/// Returns [`None`] for keys that are not part of the musical keyboard layout.
 fn synth_key_from_keyboard_key(
     key: keyboard_protocol::StandardKey,
 ) -> Option<synth::keyboard::Key> {
@@ -147,17 +144,21 @@ fn synth_key_from_keyboard_key(
     Some(synth::keyboard::Key::new(row, column))
 }
 
+/// Converts a keyboard key into the note it represents, returning [`None`]
+/// if the key is not mapped to a note.
 fn note_from_key(key: keyboard_protocol::StandardKey) -> Option<Note> {
     let synth_key = synth_key_from_keyboard_key(key)?;
 
     synth::keyboard::note_of(synth_key, BASE_NOTE)
 }
 
+/// Represents the state of the audio engine
 pub struct State {
     synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE>,
 }
 
 impl State {
+    /// Initialise the synthesiser with default parameters.
     pub fn new() -> State {
         let default_wavetable = Wavetable::from_fn(libm::sinf);
 
@@ -175,12 +176,14 @@ impl State {
         self.synth.sample_many()
     }
 
+    /// Convenience method to apply multiple events to the audio engine.
     pub fn apply_events(&mut self, events: impl IntoIterator<Item = Event>) {
         for event in events {
             self.apply_event(event);
         }
     }
 
+    /// Applies a single event to the audio engine.
     pub fn apply_event(&mut self, event: Event) {
         match event {
             Event::Note { note, is_pressed } => {
@@ -240,6 +243,7 @@ impl State {
                             self.synth.parameters.envelope.release =
                                 (self.synth.parameters.envelope.release
                                     + STEP * f32::from(direction))
+                                // Unlike the others, release can go past 1.0
                                 .clamp(0.0, synth::MAX_RELEASE);
                         }
                     },
@@ -267,7 +271,9 @@ impl State {
 
 type AudioPacket = [Sample; 48];
 
+/// The interval in milliseconds between USB audio polls.
 pub const AUDIO_REFRESH_MS: u8 = 4;
+/// The sample rate in Hz.
 pub const SAMPLE_RATE: u32 = 48_000;
 
 pub struct Hardware {

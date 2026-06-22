@@ -1,14 +1,15 @@
-use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
 use keyboard_protocol::{Key, KeyboardStatus};
 
 use crate::input::encoder::{self, EncoderStatus};
 
+/// Represents a keyboard event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyEvent {
     Pressed(Key),
     Released(Key),
 }
 
+/// An input event from either the encoders or the keyboard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
     Key {
@@ -21,6 +22,7 @@ pub enum Event {
     },
 }
 
+/// A change in input state from either the encoders or the keyboard.
 pub enum InputChange {
     Keyboard(KeyboardStatus),
     Encoder(EncoderStatus),

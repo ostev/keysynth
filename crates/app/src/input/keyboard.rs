@@ -1,11 +1,11 @@
 use circular_buffer::CircularBuffer;
 use embassy_executor::task;
-use esp_hal::{Async, Blocking, uart::UartRx};
+use esp_hal::{Blocking, uart::UartRx};
 use esp_println::println;
-use keyboard_protocol::{KeyboardStatus, KeyboardWithEncoderStatus};
+use keyboard_protocol::KeyboardWithEncoderStatus;
 
 mod channel {
-    use keyboard_protocol::{KeyboardStatus, KeyboardWithEncoderStatus};
+    use keyboard_protocol::KeyboardWithEncoderStatus;
 
     use crate::channel;
 
@@ -18,6 +18,7 @@ pub struct KeyboardHardware {
     pub uart: UartRx<'static, Blocking>,
 }
 
+/// Handles UART communication from the RP2040.
 #[task]
 pub async fn keyboard_interface(hardware: KeyboardHardware) -> ! {
     const STATUS_SIZE: usize = core::mem::size_of::<KeyboardWithEncoderStatus>();
@@ -39,6 +40,8 @@ pub async fn keyboard_interface(hardware: KeyboardHardware) -> ! {
             }
         }
 
+        // Decode the message if the buffer contains the message start and end marker bytes
+        // in the right positions.
         if buffer.len() >= STATUS_SIZE + 2 {
             if buffer[0] == keyboard_protocol::uart::START_BYTE
                 && buffer[STATUS_SIZE + 1] == keyboard_protocol::uart::END_BYTE

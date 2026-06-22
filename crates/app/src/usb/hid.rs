@@ -1,10 +1,12 @@
-use embassy_executor::task;
-use enumflags2::{BitFlags, make_bitflags};
+use enumflags2::BitFlags;
 use keyboard_protocol::{Modifier, StandardKey};
 use usbd_hid::descriptor::KeyboardReport;
 
+/// How frequently the HID device is polled by the host.
 pub const POLL_MS: u8 = 4;
 
+/// Represents the keyboard status as it will be transmitted
+/// over USB.
 #[derive(Clone, Copy, Debug)]
 pub struct UsbKeyboardStatus {
     pub keys: [StandardKey; 6],
@@ -12,13 +14,13 @@ pub struct UsbKeyboardStatus {
 }
 
 impl UsbKeyboardStatus {
-    pub fn press(key: StandardKey) -> UsbKeyboardStatus {
+    pub const fn press(key: StandardKey) -> UsbKeyboardStatus {
         let mut keys = [StandardKey::None; 6];
         keys[0] = key;
 
         UsbKeyboardStatus {
             keys,
-            modifier_bitfield: BitFlags::empty(),
+            modifier_bitfield: BitFlags::EMPTY,
         }
     }
     pub const fn empty() -> UsbKeyboardStatus {
@@ -42,37 +44,3 @@ impl Into<KeyboardReport> for UsbKeyboardStatus {
         }
     }
 }
-
-// pub struct UsbHidHardware {
-// pub writer: HidWriter<'static, usb::Bus, 8>,
-// }
-
-// #[task]
-// pub async fn hid(mut hardware: UsbHidHardware) {
-//     let receiver = channel::receiver();
-
-//     loop {
-//         let UsbKeyboardStatus {
-//             keys,
-//             modifier_bitfield,
-//         } = receiver.receive().await;
-
-//         let report = KeyboardReport {
-//             // Safety: the `KeyCode`s are `#[repr(u8)]`, so we can safely
-//             // cast then into an array of u8s. Going the other direction could
-//             // cause issues, however.
-//             keycodes: unsafe { core::mem::transmute(keys) },
-//             leds: 0,
-//             modifier: modifier_bitfield.bits(),
-//             reserved: 0,
-//         };
-//         match hardware.writer.write_serialize(&report).await {
-//             Ok(()) => {}
-//             // Err(error) => println!(
-//             //     "Warning: failed to send keyboard HID report, {:?}, with the following error: {:?}",
-//             //     report, error
-//             // ),
-//             Err(error) => {}
-//         }
-//     }
-// }

@@ -220,26 +220,6 @@ impl DriverHardware {
 
         Ok(())
     }
-
-    pub async fn draw_point_async(
-        &mut self,
-        x: u16,
-        y: u16,
-        color: Color,
-        orientation: Orientation,
-    ) -> Result<(), spi::Error> {
-        self.set_window(
-            Window {
-                x_start: x,
-                y_start: y,
-                x_end: x,
-                y_end: y,
-            },
-            orientation,
-        )
-        .await?;
-        self.write_data(&color.to_be_bytes()).await
-    }
 }
 
 pub struct Driver {
@@ -247,7 +227,6 @@ pub struct Driver {
 
     orientation: Orientation,
     framebuffer: Box<Framebuffer>,
-    dirty_rows: [bool; WIDTH],
 }
 
 type Framebuffer = embedded_graphics::framebuffer::Framebuffer<
@@ -279,7 +258,6 @@ impl Driver {
             hardware: driver_hardware,
             orientation,
             framebuffer: Box::new(Framebuffer::new()),
-            dirty_rows: [false; WIDTH],
         };
 
         driver.hardware.reset();
@@ -317,72 +295,6 @@ impl Driver {
 
         self.hardware.write_data(bytes).await?;
 
-        self.clear_dirty();
-
-        Ok(())
-    }
-
-    fn mark_dirty(&mut self, area: &Rectangle) {
-        let bounds = self.bounding_box();
-
-        let intersection = area.intersection(&bounds);
-        let top = intersection.top_left.y as usize;
-
-        if let Some(bottom_right) = intersection.bottom_right() {
-            let bottom = bottom_right.y as usize;
-
-            let slice = &mut self.dirty_rows[top..=bottom];
-            slice.fill(true);
-        }
-    }
-
-    fn clear_dirty(&mut self) {
-        self.dirty_rows.fill(false);
-    }
-
-    pub async fn partial_flush(&mut self) -> Result<(), spi::Error> {
-        let (width, height) = self.orientation.dimensions();
-
-        let bytes_per_row = WIDTH * mem::size_of::<<Color as PixelColor>::Raw>();
-
-        let mut row = 0;
-        println!("Partial flush!");
-
-        while row < HEIGHT {
-            if self.dirty_rows[row] {
-                let start = row;
-
-                while row + 1 < height && self.dirty_rows[row + 1] {
-                    // Advance the row counter while we have a continuous dirty region to avoid calling
-                    // `set_window` for each row individually.
-                    row += 1;
-                }
-                let end = row;
-                println!("ROW BETWEEN {start} AND {end}");
-
-                self.set_window(Window {
-                    x_start: 0,
-                    y_start: start as u16,
-                    x_end: width as u16,
-                    y_end: (end + 1) as u16,
-                })
-                .await?;
-
-                println!("WINDOW SET");
-
-                let bytes =
-                    &self.framebuffer.data()[start * bytes_per_row..(end + 1) * bytes_per_row];
-
-                self.hardware.write_data(bytes).await?;
-
-                println!("BYTES WRITTEN ");
-            }
-
-            row += 1;
-        }
-
-        self.clear_dirty();
-
         Ok(())
     }
 }
@@ -404,30 +316,21 @@ impl DrawTarget for Driver {
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        self.framebuffer
-            .draw_iter(pixels.into_iter().inspect(|Pixel(point, _)| {
-                let _ = point
-                    .y
-                    .try_into()
-                    .map(|row: usize| self.dirty_rows.get_mut(row).map(|marker| *marker = true));
-            }))
+        self.framebuffer.draw_iter(pixels)
     }
 
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = Self::Color>,
     {
-        self.mark_dirty(area);
         self.framebuffer.fill_contiguous(area, colors)
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        self.mark_dirty(area);
         self.framebuffer.fill_solid(area, color)
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        self.dirty_rows.fill(true);
         self.framebuffer.clear(color);
 
         Ok(())

@@ -1,49 +1,72 @@
 use core::cell::OnceCell;
 
 use bytemuck::NoUninit;
-use embassy_executor::task;
-use embassy_sync::{blocking_mutex::Mutex, once_lock::OnceLock, signal::Signal};
+use embassy_sync::blocking_mutex::Mutex;
 use esp_hal::{
     gpio::{Input, InputConfig, InputPin, Pull},
     handler,
-    interrupt::{InterruptHandler, Priority},
+    interrupt::Priority,
     pcnt::{
         Pcnt,
         channel::{CtrlMode, EdgeMode},
         unit::Unit,
     },
 };
-use esp_println::println;
 use esp_sync::RawMutex;
 
+mod channel {
+    use super::Delta;
+    use crate::channel;
+
+    channel!(Delta, 32);
+}
 pub use channel::receiver;
 
+/// The amount each encoder detent changes a parameter by.
 pub const STEP: f32 = 0.01;
+
+/// Identifies the currently selected parameter panel.
 
 #[derive(Clone, Copy, Debug, NoUninit, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum Panel {
+    /// Filter cutoff and resonance controls.
     #[default]
     CutoffResonance,
+
+    /// Envelope attack and decay controls.
     AttackDecay,
+
+    /// Envelope sustain and release controls.
     SustainRelease,
 }
 
+/// Identifies one of the rotary encoders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Id {
+    /// The primary encoder.
     Primary,
+    /// One of the two panel encoders.
     Panel(PanelId),
 }
 
+/// Identifies a panel encoder.
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanelId {
+    /// The secondary encoder.
     One,
+    /// The tertiary encoder.
     Two,
 }
 
+/// The direction an encoder was rotated.
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
+    /// Clockwise rotation.
     Increase,
+    /// Counter-clockwise rotation.
     Decrease,
 }
 
@@ -56,29 +79,26 @@ impl From<Direction> for f32 {
     }
 }
 
+/// Hardware resources required to configure an encoder.
 pub struct Hardware<A: InputPin + 'static, B: InputPin + 'static> {
     pub counter: Pcnt<'static>,
     pub a: A,
     pub b: B,
 }
 
-mod channel {
-    use super::Delta;
-    use crate::channel;
-
-    channel!(Delta, 32);
-}
-
+/// Relative movement reported by each encoder since the last update.
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderStatus {
     pub deltas: [Delta; 3],
 }
 
+/// Signed encoder movement measured in detents.
 pub type Delta = i16;
 
 const THRESHOLD: i16 = 3;
 const FILTER: u16 = 12;
 
+/// Configures an encoder unit with thresholds, interrupts and filtering.
 fn configure_unit<'d, const N: usize>(
     unit: &mut Unit<'d, N>,
     a: impl InputPin + 'd,
@@ -109,6 +129,10 @@ fn configure_unit<'d, const N: usize>(
     unit.listen();
 }
 
+/// Configures the global encoder driver.
+///
+/// # Panics
+/// Panics if the encoder driver has already been configured.
 pub fn configure<A: InputPin + 'static, B: InputPin + 'static>(mut hardware: Hardware<A, B>) {
     hardware.counter.set_interrupt_handler(interrupt_handler);
     configure_unit(&mut hardware.counter.unit0, hardware.a, hardware.b);
@@ -121,6 +145,7 @@ pub fn configure<A: InputPin + 'static, B: InputPin + 'static>(mut hardware: Har
 
 static COUNTER: Mutex<RawMutex, OnceCell<Pcnt<'static>>> = Mutex::new(OnceCell::new());
 
+/// Interrupt handler for encoder movement.
 #[handler(priority = Priority::Priority3)]
 fn interrupt_handler() {
     let sender = channel::sender();

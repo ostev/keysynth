@@ -8,15 +8,6 @@
 
 extern crate alloc;
 
-use embassy_executor::task;
-use embassy_futures::{
-    join::join,
-    select::{Either, select},
-};
-use keyboard_protocol::StandardKey;
-
-use crate::{input::encoder::EncoderStatus, usb::hid::UsbKeyboardStatus};
-
 pub mod audio;
 pub mod concurrency;
 pub mod gui;
@@ -25,4 +16,3 @@ pub mod input;
 pub mod storage;
 pub mod text;
 pub mod usb;
-mod utils;

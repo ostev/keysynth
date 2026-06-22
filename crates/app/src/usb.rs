@@ -1,20 +1,13 @@
-use core::iter;
-
-use embassy_executor::{SendSpawner, Spawner, task};
-
 use embassy_sync::{blocking_mutex::Mutex, signal::Signal};
 use esp_hal::{
-    interrupt::software::SoftwareInterrupt,
     otg_fs::{self, Usb},
-    peripherals::{CPU_CTRL, GPIO19, GPIO20, USB0},
+    peripherals::USB0,
 };
 use esp_println::println;
 use esp_sync::RawMutex;
-use itertools::Itertools;
 use static_cell::StaticCell;
 use synth::{note::Note, wavetable::Wavetable};
 use usb_device::{
-    LangID,
     bus::UsbBusAllocator,
     device::{StringDescriptors, UsbDevice, UsbDeviceBuilder, UsbVidPid},
 };
@@ -22,8 +15,7 @@ use usbd_audio::{AudioClass, AudioClassBuilder, StreamConfig, TerminalType};
 use usbd_hid::{
     descriptor::{KeyboardReport, SerializedDescriptor},
     hid_class::{
-        self, HIDClass, HidClassSettings, HidCountryCode, HidProtocol, HidSubClass,
-        ProtocolModeConfig,
+        HIDClass, HidClassSettings, HidCountryCode, HidProtocol, HidSubClass, ProtocolModeConfig,
     },
 };
 use usbd_midi::{UsbMidiClass, UsbMidiPacketReader};
@@ -38,6 +30,10 @@ pub mod hid;
 
 pub type Bus = esp_hal::otg_fs::UsbBus<esp_hal::otg_fs::Usb<'static>>;
 
+/// Hardware peripherals required to initialize the USB subsystem.
+///
+/// This owns the USB peripheral and its associated pins until
+/// [`build`](Self::build) constructs the USB device.
 pub struct Peripherals<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> {
     pub usb: USB0<'static>,
     pub dp: DP,
@@ -45,6 +41,7 @@ pub struct Peripherals<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static>
 }
 
 impl<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> Peripherals<DP, DM> {
+    /// Initializes the USB bus and creates all USB classes.
     pub fn build(self) -> UsbHardware {
         static EP_OUT_BUFFER: StaticCell<[u32; 4096]> = StaticCell::new();
 
@@ -104,6 +101,7 @@ impl<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> Peripherals<DP, D
     }
 }
 
+/// Contains the USB device as well as all the device classes being used.
 pub struct UsbHardware {
     device: UsbDevice<'static, Bus>,
     audio: AudioClass<'static, Bus>,
@@ -120,11 +118,14 @@ mod audio_channel {
 }
 pub use audio_channel::sender as audio_sender;
 
+/// Most recent keyboard state.
 static KEYBOARD_STATUS: Mutex<RawMutex, UsbKeyboardStatus> = Mutex::new(UsbKeyboardStatus::empty());
 
-/// Updates the keyboard status, which will then be sent over USB.
+/// Updates the keyboard status, which will then be sent over USB the next time we're polled by the
+/// host.
+///
 /// ## Safety
-/// this function **must** not be called from inside another locked mutex.
+/// This function **must** not be called from inside another locked mutex.
 pub unsafe fn set_keyboard_status(status: UsbKeyboardStatus) {
     unsafe {
         KEYBOARD_STATUS.lock_mut(|locked_status| {
@@ -133,17 +134,26 @@ pub unsafe fn set_keyboard_status(status: UsbKeyboardStatus) {
     }
 }
 
+/// Contains the new wavetable to be received by the audio engine.
 static WAVETABLE: Signal<RawMutex, Wavetable<{ WAVETABLE_SIZE }>> = Signal::new();
 
+/// Queues a new wavetable for the audio engine.
 pub fn set_wavetable(wavetable: Wavetable<WAVETABLE_SIZE>) {
     WAVETABLE.signal(wavetable);
 }
 
+/// Stack size allocated for the USB task.
 pub const STACK_SIZE: usize = 48_000;
 
+/// Main USB device task.
+///
+/// This task is responsible for:
+/// - transmitting HID keyboard reports,
+/// - receiving MIDI messages,
+/// - streaming synthesized audio,
+/// - applying audio events and wavetable updates.
 pub fn device_loop(mut hardware: UsbHardware) -> ! {
     let mut audio = audio::State::new();
-    println!("Init!");
 
     let audio_receiver = audio_channel::receiver();
 
