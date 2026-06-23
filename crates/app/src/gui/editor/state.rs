@@ -1,9 +1,8 @@
 use core::cmp;
 
-use alloc::borrow::{Cow, ToOwned};
-use embassy_time::Duration;
+use alloc::borrow::ToOwned;
 use embedded_gui::app::Change;
-use keyboard_protocol::{Key, Modifier, StandardKey};
+use keyboard_protocol::{Key, StandardKey};
 
 use crate::{
     gui::{
@@ -14,7 +13,6 @@ use crate::{
             position::{Direction, Position, Selection, SelectionRange},
             source::Source,
         },
-        message::Message,
     },
     input::event::{Event, KeyEvent},
     text::{ByteChar, Name, fixed_str},

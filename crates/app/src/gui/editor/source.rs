@@ -2,8 +2,6 @@ use core::ops::Index;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use embedded_storage_async::nor_flash::NorFlash;
-use esp_println::println;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -196,10 +194,6 @@ impl Source {
         SerializedSource::from(self).text
     }
 
-    pub fn to_string(&self) -> Result<alloc::string::String, alloc::string::FromUtf8Error> {
-        alloc::string::String::from_utf8(self.to_byte_string())
-    }
-
     /// # Safety
     ///
     /// Every line in the source must be valid UTF-8 bytes. It should be ASCII, so this is fine
@@ -215,17 +209,6 @@ impl Index<Position> for Source {
     fn index(&self, position: Position) -> &Self::Output {
         &self.lines[position.line][position.column]
     }
-}
-
-pub enum LoadError<S: NorFlash> {
-    Storage(sequential_storage::Error<S::Error>),
-    DeserializationError(postcard::Error),
-    NotFound,
-}
-
-pub enum SaveError<S: NorFlash> {
-    Storage(sequential_storage::Error<S::Error>),
-    SerializationError(postcard::Error),
 }
 
 #[derive(Deserialize, Serialize)]

@@ -4,7 +4,7 @@ use embedded_gui::{
     interactive::FocusState,
     layout::{Direction, Sizing},
     primitive::{owned_text::OwnedText, spacer::Spacer, text::Text},
-    signal::{Reactive, Signal, SignalRef, Source},
+    signal::{Reactive, Signal, SignalRef},
     size::Size,
     view::{View, Widget},
 };

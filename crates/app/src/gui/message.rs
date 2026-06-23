@@ -23,7 +23,8 @@ pub struct Message {
     /// The message text.
     pub text: Cow<'static, str>,
 
-    /// The time at which the message was created.
+    /// The time at which the message was created. Can be used for hiding it
+    /// if it's been up for a while
     pub timestamp: Instant,
 }
 
