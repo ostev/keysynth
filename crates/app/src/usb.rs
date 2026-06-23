@@ -52,7 +52,18 @@ impl<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> Peripherals<DP, D
         let bus: &'static mut _ = USB_BUS
             .init_with(|| esp_hal::otg_fs::UsbBus::new(usb, EP_OUT_BUFFER.init_with(|| [0; 4096])));
 
-        // let device = builder.build();
+        let hid = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            hid::POLL_MS,
+            HidClassSettings {
+                subclass: HidSubClass::NoSubClass,
+                protocol: HidProtocol::Keyboard,
+                config: ProtocolModeConfig::DefaultBehavior,
+                locale: HidCountryCode::US,
+            },
+        );
+
         let audio = AudioClassBuilder::new()
             .input(
                 StreamConfig::new_discrete(
@@ -66,21 +77,7 @@ impl<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> Peripherals<DP, D
             .build(bus)
             .unwrap();
 
-        let hid = HIDClass::new_with_settings(
-            bus,
-            KeyboardReport::desc(),
-            hid::POLL_MS,
-            HidClassSettings {
-                subclass: HidSubClass::NoSubClass,
-                protocol: HidProtocol::Keyboard,
-                config: ProtocolModeConfig::DefaultBehavior,
-                locale: HidCountryCode::US,
-            },
-        );
-
-        let midi = UsbMidiClass::new(bus, 1, 0).unwrap();
-
-        let device: UsbDevice<'static, Bus> = UsbDeviceBuilder::new(bus, UsbVidPid(0x1209, 0x0001))
+        let device: UsbDevice<'static, Bus> = UsbDeviceBuilder::new(bus, UsbVidPid(0x1209, 0x0003))
             .max_power(500)
             .unwrap()
             .strings(&[StringDescriptors::default()
@@ -91,13 +88,7 @@ impl<DP: otg_fs::UsbDp + 'static, DM: otg_fs::UsbDm + 'static> Peripherals<DP, D
             .composite_with_iads()
             .build();
 
-        UsbHardware {
-            device,
-            audio,
-            hid,
-            midi,
-        }
-        // UsbHardware { device, audio }
+        UsbHardware { device, audio, hid }
     }
 }
 
@@ -106,7 +97,6 @@ pub struct UsbHardware {
     device: UsbDevice<'static, Bus>,
     audio: AudioClass<'static, Bus>,
     hid: HIDClass<'static, Bus>,
-    midi: UsbMidiClass<'static, Bus>,
 }
 
 mod audio_channel {
@@ -178,37 +168,6 @@ pub fn device_loop(mut hardware: UsbHardware) -> ! {
             // We don't care about errors here, since we'll write the next samples soon enough
             // anyway.
             let _ = hardware.hid.push_input(&report);
-
-            let mut buffer = [0; 64];
-            if let Ok(size) = hardware.midi.read(&mut buffer) {
-                let packet_reader = UsbMidiPacketReader::new(&buffer, size);
-                let messages = packet_reader
-                    .into_iter()
-                    .filter_map(|packet| packet.ok())
-                    .filter_map(|packet| usbd_midi::Message::try_from(&packet).ok());
-
-                for message in messages {
-                    match message {
-                        usbd_midi::Message::NoteOn(_, note, velocity) => {
-                            // Remap the note velocity from zero to one
-                            let gain: f32 = u8::from(velocity) as f32 / (0x7f as f32);
-
-                            audio.apply_event(audio::Event::SetVoiceGain { gain });
-                            audio.apply_event(audio::Event::Note {
-                                note: Note::from_midi_number(note.into()),
-                                is_pressed: true,
-                            });
-                        }
-                        usbd_midi::Message::NoteOff(_, note, _) => {
-                            audio.apply_event(audio::Event::Note {
-                                note: Note::from_midi_number(note.into()),
-                                is_pressed: false,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-            }
 
             match hardware.audio.write(bytemuck::cast_slice(&sample)) {
                 Err(usbd_audio::Error::UsbError(usbd_hid::UsbError::WouldBlock)) => {
