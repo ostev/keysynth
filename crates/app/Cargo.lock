@@ -723,7 +723,6 @@ dependencies = [
  "bumpalo",
  "embedded-graphics",
  "embedded-gui-macros",
- "esp-println",
  "hashbrown 0.17.1",
  "heapless 0.9.3",
 ]

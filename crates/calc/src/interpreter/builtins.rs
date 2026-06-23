@@ -26,12 +26,11 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
         "pi" => BuiltinValue::Number(f32::consts::PI),
         "tau" => BuiltinValue::Number(f32::consts::TAU),
 
-        "two_pi" => BuiltinValue::Number(f32::consts::PI * 2.0),
         "half_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_2),
         "third_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_3),
         "quarter_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_4),
         "sixth_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_6),
-        "eight_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_8),
+        "eighth_pi" => BuiltinValue::Number(f32::consts::FRAC_PI_8),
 
         "ln_2" => BuiltinValue::Number(f32::consts::LN_2),
         "ln_10" => BuiltinValue::Number(f32::consts::LN_10),
@@ -40,8 +39,6 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
 
         "recip_pi" => BuiltinValue::Number(f32::consts::FRAC_1_PI),
         "recip_2pi" => BuiltinValue::Number(f32::consts::FRAC_2_PI),
-        "recip_sqrt_pi" => BuiltinValue::Number(f32::consts::FRAC_1_SQRT_2),
-        "recip_2sqrt_pi" => BuiltinValue::Number(f32::consts::FRAC_2_SQRT_PI),
 
         "sqrt_2" => BuiltinValue::Number(f32::consts::SQRT_2),
         "recip_sqrt_2" => BuiltinValue::Number(f32::consts::FRAC_1_SQRT_2),
@@ -104,7 +101,7 @@ fn unary_numeric<'v, 's>(
             Value::Number(number) => f(callsite, *number).map(Value::Number),
             value => Err(Error::new(
                 ErrorKind::Expected(Type::Number, value.clone()),
-                callsite,
+                function_span,
             )),
         }?;
 
@@ -159,17 +156,13 @@ const fn negative_one_pow(exponent: i32) -> i32 {
 }
 
 fn cube_root(value: f32) -> f32 {
-    // let positive_root = value.abs().powf(1.0 / 3.0);
-    // let sign = (-1 as isize).pow(3);
-
-    // sign as f32 * positive_root
     libm::cbrtf(value)
 }
 
 fn nth_root<'v, 's>(span: Span, n: f32, value: f32) -> Result<f32, Error<'v, 's>> {
     if n >= 0.0 {
         if value >= 0.0 {
-            Ok(value.powf(1.0 / n))
+            Ok(libm::powf(value, 1.0 / n))
         } else {
             let truncated_n = n.trunc();
             let integer_n = truncated_n as i32;

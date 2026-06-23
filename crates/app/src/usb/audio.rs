@@ -276,8 +276,6 @@ impl State {
 
 type AudioPacket = [Sample; 48];
 
-/// The interval in milliseconds between USB audio polls.
-pub const AUDIO_REFRESH_MS: u8 = 4;
 /// The sample rate in Hz.
 pub const SAMPLE_RATE: u32 = 48_000;
 

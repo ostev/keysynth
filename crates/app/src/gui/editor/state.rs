@@ -67,7 +67,9 @@ impl EditorState {
     pub fn get_preview<const PREVIEW_LENGTH: usize>(&self) -> heapless::String<PREVIEW_LENGTH> {
         self.source
             .lines
-            .last()
+            .iter()
+            .rev()
+            .find(|line| !line.is_empty())
             .map(|last_line| {
                 heapless::String::<PREVIEW_LENGTH>::from_utf8(
                     heapless::Vec::from_slice(

@@ -65,10 +65,7 @@ impl Context {
     async fn save(&mut self, name: Name, bytes: [u8; MAX_SIZE]) -> Result<Name, LoadError> {
         let mut files = self.storage.fetch_files().await?;
 
-        self.storage
-            .save(&key_from_name(&name), &bytes)
-            .await
-            .unwrap();
+        self.storage.save(&key_from_name(&name), &bytes).await?;
 
         files.create(name.clone())?;
 
@@ -168,8 +165,7 @@ impl embedded_gui::effect::Effect for Effect {
                                 rpds::ht_map!["x" => calc::interpreter::Value::Number(x)]
                             ];
 
-                            let (dynamic_value, _) =
-                                calc::interpreter::eval(&expr, outer_scope).unwrap();
+                            let (dynamic_value, _) = calc::interpreter::eval(&expr, outer_scope)?;
 
                             match dynamic_value {
                                 calc::interpreter::Value::Number(value) => Ok(value),

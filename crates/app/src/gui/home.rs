@@ -19,7 +19,7 @@ use crate::{
     input::{encoder, event::Event},
 };
 
-pub const PREVIEW_LINE_LENGTH: usize = 20;
+pub const PREVIEW_LINE_LENGTH: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FocusKey {
@@ -206,7 +206,7 @@ impl Home {
                                     option_editor
                                         .as_ref()
                                         .map(|editor| editor.get_preview::<PREVIEW_LINE_LENGTH>())
-                                        .unwrap_or(heapless::format!("no program loaded").unwrap())
+                                        .unwrap_or(heapless::format!("<none>").unwrap())
                                 });
                                 println!("Preview text: {:?}", preview_text);
 

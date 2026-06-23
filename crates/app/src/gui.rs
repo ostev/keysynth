@@ -8,7 +8,7 @@ use embassy_time::{Duration, Instant};
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_gui::{
     app::{App, Change, State},
-    component::{any_component, background::Background, button::Button, group::Group},
+    component::{any_component, background::Background, group::Group},
     layout::{Direction, Sizing},
     primitive::{any_primitive, owned_text::OwnedText, text::Text},
     signal::{Reactive, Source},
@@ -130,7 +130,6 @@ impl From<select_file::FocusKey> for FocusKey {
 #[derive(Reactive)]
 #[any_component(target = display::Driver, event = input::event::Event, msg = Msg, focus_key = FocusKey)]
 enum AnyComponent<'a> {
-    Button(Button<'a, display::Color, &'a str>),
     Group(Group),
     Editor(editor::Editor<'a>),
     OwnedTextBar4(OwnedTextBar<4>),
