@@ -114,8 +114,8 @@ impl Source {
     }
     /// Deletes a range of characters as a single editing operation.
     pub fn group_delete(&mut self, range: SelectionRange) -> Position {
-        let start = range.start();
-        let mut end = range.end();
+        let start = range.start().advance();
+        let mut end = range.end().advance();
 
         while end != start {
             if end.column > 0 {
@@ -135,7 +135,7 @@ impl Source {
     pub fn apply(&mut self, edit: Edit) -> Position {
         match edit {
             Edit::Insert(character, position) => self.insert(character, position),
-            Edit::Delete(_, position) => self.delete(position),
+            Edit::Backspace(_, position) => self.delete(position),
 
             Edit::GroupInsert(text, start) => self.group_insert(&text, start),
             Edit::GroupDelete(_, range) => self.group_delete(range),

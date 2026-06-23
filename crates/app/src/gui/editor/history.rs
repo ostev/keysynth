@@ -9,14 +9,14 @@ use crate::{
 /// Maximum number of undo operations retained.
 const MAX_UNDO: usize = 15;
 /// Maximum number of redo operations retained.
-const MAX_REDO: usize = 10;
+const MAX_REDO: usize = 15;
 
 /// A reversible editing operation stored in the undo history.
 #[derive(Clone, Debug)]
 pub enum Edit {
     Insert(ByteChar, Position),
     GroupInsert(ByteString, Position),
-    Delete(ByteChar, Position),
+    Backspace(ByteChar, Position),
     GroupDelete(ByteString, SelectionRange),
 }
 
@@ -82,14 +82,14 @@ impl History {
         self.redo_history.push_back(timestamped.clone());
 
         let reverse = match timestamped.edit {
-            Edit::Insert(character, position) => Edit::Delete(
+            Edit::Insert(character, position) => Edit::Backspace(
                 character,
                 Position {
                     line: position.line,
                     column: position.column,
                 },
             ),
-            Edit::Delete(character, position) => Edit::Insert(
+            Edit::Backspace(character, position) => Edit::Insert(
                 character,
                 Position {
                     line: position.line,
@@ -97,7 +97,14 @@ impl History {
                 },
             ),
             Edit::GroupInsert(text, position) => {
-                let range = SelectionRange::from_start_and_text(position, &text);
+                let range = SelectionRange::new(
+                    // Position {
+                    //     line: position.line,
+                    //     column: position.column,
+                    // },
+                    position,
+                    timestamped.cursor_after,
+                );
                 Edit::GroupDelete(text, range)
             }
             Edit::GroupDelete(text, range) => Edit::GroupInsert(text, range.start()),

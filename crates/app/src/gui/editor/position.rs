@@ -130,13 +130,13 @@ impl SelectionRange {
     }
 
     /// Create a selection range from a start position and the provided text.
-    pub fn from_start_and_text(start: Position, text: &ByteStr) -> SelectionRange {
-        let end = text.iter().fold(start, |position, &character| {
-            position.advance_char(character)
-        });
+    // pub fn from_start_and_text(start: Position, text: &ByteStr) -> SelectionRange {
+    //     let end = text.iter().fold(start, |position, &character| {
+    //         position.advance_char(character)
+    //     });
 
-        SelectionRange::new(start, end)
-    }
+    //     SelectionRange::new(start, end)
+    // }
 
     /// Draws the portion of the selection visible on a single line.
     pub fn draw<T: DrawTarget<Color = Rgb565>>(

@@ -4,7 +4,6 @@ use esp_hal::{
     dma::{self, DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::{Level, Output, OutputConfig},
-    i2s::{self, master::I2sTx},
     interrupt::software::{SoftwareInterrupt, SoftwareInterruptControl},
     pcnt::Pcnt,
     peripherals::{CPU_CTRL, GPIO7, GPIO8},
@@ -43,7 +42,6 @@ pub struct Hardware {
 /// An error that occurred during hardware initialisation.
 #[derive(Debug)]
 pub enum InitError {
-    I2SConfigError(i2s::master::ConfigError),
     UartConfigError(uart::ConfigError),
     SpiConfigError(spi::master::ConfigError),
     DmaBufError(dma::DmaBufError),
@@ -110,7 +108,7 @@ impl Hardware {
             let spi: esp_hal::spi::master::SpiDmaBus<'static, Blocking> = Spi::new(
                 peripherals.SPI2,
                 spi::master::Config::default()
-                    .with_frequency(Rate::from_mhz(5))
+                    .with_frequency(Rate::from_mhz(20))
                     .with_mode(spi::Mode::_0),
             )
             .map_err(InitError::SpiConfigError)?

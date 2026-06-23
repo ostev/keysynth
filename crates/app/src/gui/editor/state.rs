@@ -292,14 +292,14 @@ impl EditorState {
                     // Character deletion falls back to deleting the newline when positioned at the
                     // end of a line, allowing adjacent lines to be merged.
                     let character = line
-                        .get(deletion_cursor.column)
+                        .get(self.cursor.column)
                         .map(|char| *char)
                         .unwrap_or(b'\n');
 
                     let new_cursor = self.source.delete(deletion_cursor);
 
                     self.history.push(
-                        history::Edit::Delete(character, self.cursor),
+                        history::Edit::Backspace(character, deletion_cursor),
                         self.cursor,
                         new_cursor,
                     );
