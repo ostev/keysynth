@@ -1,12 +1,13 @@
 use embedded_graphics::{
     draw_target::DrawTarget,
-    mono_font::{MonoFont, MonoTextStyle},
+    mono_font::MonoFont,
     pixelcolor::Rgb565,
     primitives::{CornerRadii, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StyledDrawable},
 };
 
 use crate::gui::colors;
 
+/// Draw a cursor at the specified position.
 pub fn draw_cursor<T: DrawTarget<Color = Rgb565>>(
     font: &MonoFont,
     position: embedded_graphics::geometry::Point,

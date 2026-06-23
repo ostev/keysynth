@@ -1,15 +1,17 @@
 use circular_buffer::CircularBuffer;
 use esp_hal::time::Instant;
-use esp_println::println;
 
 use crate::{
     gui::editor::position::{Position, SelectionRange},
     text::{ByteChar, ByteString},
 };
 
-const MAX_UNDO: usize = 10;
-const MAX_REDO: usize = 5;
+/// Maximum number of undo operations retained.
+const MAX_UNDO: usize = 15;
+/// Maximum number of redo operations retained.
+const MAX_REDO: usize = 10;
 
+/// A reversible editing operation stored in the undo history.
 #[derive(Clone, Debug)]
 pub enum Edit {
     Insert(ByteChar, Position),
@@ -31,34 +33,35 @@ impl Timestamp {
     }
 }
 
+/// An edit together with the cursor positions needed to restore editor state
+/// during undo and redo.
 #[derive(Clone, Debug)]
 struct TimestampedEdit {
+    /// Timestamp is stored for when I later implement edit batching.
     timestamp: Timestamp,
     edit: Edit,
     cursor_before: Position,
     cursor_after: Position,
 }
 
+/// Fixed-capacity undo/redo history.
+///
+/// Recording a new edit clears the redo history.
 #[derive(Clone)]
 pub struct History {
     history: CircularBuffer<MAX_UNDO, TimestampedEdit>,
     redo_history: CircularBuffer<MAX_REDO, TimestampedEdit>,
-    // /// The fallback cursor for if the user performs an undo operation and there
-    // /// was no edit beforehand.
-    // starting_cursor: Position,
 }
 
-pub const BATCH_DURATION_MS: u32 = 2 * 1000;
-
 impl History {
-    pub fn new(starting_cursor: Position) -> History {
+    pub const fn new() -> History {
         History {
             history: CircularBuffer::new(),
             redo_history: CircularBuffer::new(),
-            // starting_cursor,
         }
     }
 
+    /// Records a new edit and invalidates any redo history.
     pub fn push(&mut self, edit: Edit, cursor_before: Position, cursor_after: Position) {
         let timestamp = Timestamp::now();
 
@@ -71,6 +74,8 @@ impl History {
         self.redo_history.clear();
     }
 
+    /// Returns the operation to undo the most recent edit, as well as the cursor
+    /// position from before it was applied.
     pub fn undo(&mut self) -> Option<(Edit, Position)> {
         let timestamped = self.history.pop_back()?;
 
@@ -101,6 +106,8 @@ impl History {
         Some((reverse, timestamped.cursor_before))
     }
 
+    /// Reapplies the most recently undone edit, returning the cursor position
+    /// from after the original edit.
     pub fn redo(&mut self) -> Option<(Edit, Position)> {
         let timestamped = self.redo_history.pop_back()?;
 

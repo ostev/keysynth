@@ -1,7 +1,6 @@
 use core::convert::Infallible;
 
 use embedded_graphics::{
-    geometry::OriginDimensions,
     mono_font::{MonoFont, MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Rgb565,
     primitives::Rectangle,
@@ -28,6 +27,7 @@ use crate::{
 const FONT: MonoFont = FONT_10X20;
 const PADDING: i32 = 4;
 
+/// State for a single-line text editor.
 pub struct State<const N: usize> {
     buffer: GapBuffer<N>,
 }
@@ -39,6 +39,7 @@ impl<const N: usize> State<N> {
         }
     }
 
+    /// Applies a single editing command to the editor.
     pub fn update(&mut self, msg: Msg) {
         match msg {
             Msg::MoveInsert(direction) => {
@@ -58,6 +59,8 @@ impl<const N: usize> State<N> {
             }
 
             Msg::Insert(character) => {
+                // We've reached the maximum number of characters we can store. Don't let
+                // them type any more.
                 let _ = self.buffer.insert(character);
             }
             Msg::Backspace => {
@@ -67,8 +70,6 @@ impl<const N: usize> State<N> {
                 // If this fails, then we've reached the end of the line.
                 let _ = self.buffer.try_forward_delete();
             }
-
-            Msg::NoOp => {}
         };
     }
 
@@ -82,6 +83,7 @@ pub enum MovementDirection {
     Right,
 }
 
+/// Displays and edits a single line of text.
 #[derive(Reactive)]
 pub struct LineEditor<'a, const N: usize> {
     state: SignalRef<'a, State<N>>,
@@ -95,6 +97,8 @@ impl<'a, const N: usize> LineEditor<'a, N> {
 
 impl<'a, const N: usize> IntrinsicSize for LineEditor<'a, N> {
     fn intrinsic_size(&self) -> Size {
+        // Reserve enough space to display the maximum number of characters, plus a
+        // small border around the text.
         Size::new(
             text::width(&FONT, N as u32) as u16 + 2 * PADDING as u16,
             FONT.character_size.height as u16 + 2 * PADDING as u16,
@@ -118,6 +122,8 @@ impl<'a, const N: usize> Primitive<display::Driver> for LineEditor<'a, N> {
         const STYLE: MonoTextStyle<'static, Rgb565> = MonoTextStyle::new(&FONT, colors::TEXT);
 
         STYLE.draw_string(
+            // SAFETY: The gap buffer only stores ASCII, so its contents can be
+            // viewed as a `String` without additional validation.
             &unsafe { self.state.buffer.to_string_unchecked() },
             embedded_graphics::geometry::Point::new(PADDING, PADDING),
             embedded_graphics::text::Baseline::Top,
@@ -146,8 +152,6 @@ pub enum Msg {
     Insert(ByteChar),
     Backspace,
     ForwardDelete,
-
-    NoOp,
 }
 
 impl Msg {

@@ -50,14 +50,12 @@ impl Default for EditorState {
 impl EditorState {
     /// Creates an editor positioned at the start of the provided source.
     pub fn new(source: Source) -> Self {
-        let cursor = Position::new(0, 0);
-
         Self {
             source,
-            cursor,
+            cursor: Position::zero(),
             selection: Selection::new(None),
             clipboard: Clipboard::new(),
-            history: History::new(cursor),
+            history: History::new(),
 
             is_caps_lock: false,
 
@@ -136,7 +134,7 @@ impl EditorState {
                     (0..2).fold(self.cursor, |cursor, _| self.source.insert(b' ', cursor));
 
                 self.history.push(
-                    history::Edit::GroupInsert(alloc::vec![b' ', b' '], ()),
+                    history::Edit::GroupInsert(alloc::vec![b' ', b' '], self.cursor),
                     self.cursor,
                     new_cursor,
                 );

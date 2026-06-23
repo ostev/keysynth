@@ -17,10 +17,18 @@ use crate::{
 /// Each program can be a maximum of 9KB
 pub const MAX_SIZE: usize = 3 * 1024;
 
+/// Editable text stored as a collection of lines.
+///
+/// Newline characters are represented implicitly by the separation between
+/// entries in `lines`.
 #[derive(Clone)]
 pub struct Source {
     pub name: Name,
-    // TODO: replace with a gap buffer for better insert performance
+
+    /// Individual lines of the document, excluding trailing newline characters.
+    /// The document always contains at least one line.
+    ///
+    // TODO: replace with a gap buffer for better insert performance in future.
     pub lines: Vec<ByteString>,
 }
 
@@ -32,9 +40,11 @@ impl Source {
         }
     }
 
+    /// Inserts a character and returns the updated cursor position.
     pub fn insert(&mut self, character: ByteChar, position: Position) -> Position {
         match character {
             b'\n' => {
+                // Split the current line at the cursor and move the trailing text onto a new line.
                 let tail = self.lines[position.line].split_off(position.column);
                 self.lines.insert(position.line + 1, tail);
 
@@ -49,7 +59,9 @@ impl Source {
         }
     }
 
-    /// Delete the specified character at the provided cursor position.
+    /// Backspaces at the specified character at the provided cursor position.
+    /// If the cursor is at the start of the line, that line gets merged with
+    /// the previous.
     pub fn delete(&mut self, position: Position) -> Position {
         if position.column == 0 {
             if position.line > 0 {
@@ -82,6 +94,7 @@ impl Source {
         }
     }
 
+    /// Removes all text before the cursor on the current line.
     pub fn backspace_line(&mut self, position: Position) -> ByteString {
         let line = &mut self.lines[position.line];
         let mut removed = line.split_off(position.column);
@@ -89,17 +102,19 @@ impl Source {
 
         removed
     }
+
+    /// Removes all text after the cursor on the current line.
     pub fn forward_delete_line(&mut self, position: Position) -> ByteString {
         self.lines[position.line].split_off(position.column)
     }
 
+    /// Inserts a sequence of characters as a single editing operation.
     pub fn group_insert(&mut self, text: &ByteStr, start: Position) -> Position {
-        println!("Group insert!!");
         text.iter().fold(start, |position, character| {
             self.insert(*character, position)
         })
     }
-
+    /// Deletes a range of characters as a single editing operation.
     pub fn group_delete(&mut self, range: SelectionRange) -> Position {
         let start = range.start();
         let mut end = range.end();
@@ -118,6 +133,7 @@ impl Source {
         start
     }
 
+    /// Applies an edit to the file and returns the new cursor position.
     pub fn apply(&mut self, edit: Edit) -> Position {
         match edit {
             Edit::Insert(character, position) => self.insert(character, position),
@@ -128,52 +144,22 @@ impl Source {
         }
     }
 
-    // pub async fn load_from_flash<S: NorFlash>(
-    //     name: Name,
-    //     storage: &mut MapStorage<Name, S, impl KeyCacheImpl<Name>>,
-    // ) -> Result<Source, LoadError<S>> {
-    //     let mut data_buffer = [0; MAX_SIZE];
-
-    //     let serialized = storage
-    //         .fetch_item::<&[u8]>(&mut data_buffer, &name)
-    //         .await
-    //         .map_err(LoadError::Storage)?
-    //         .ok_or(LoadError::NotFound)?;
-    //     let source: SerializedSource =
-    //         postcard::from_bytes(serialized).map_err(LoadError::DeserializationError)?;
-
-    //     Ok(Source::from_serialized(name, source))
-    // }
-
+    /// Serializes the file into the provided buffer.
     pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> Result<&'a [u8], postcard::Error> {
         postcard::to_slice(&SerializedSource::from(self), buffer).map(|bytes| &*bytes)
     }
 
+    /// Deserializes a previously serialized file.
     pub fn deserialize(name: Name, serialized: &[u8]) -> Result<Source, postcard::Error> {
         let source: SerializedSource = postcard::from_bytes(serialized)?;
 
         Ok(Source::from_serialized(name, source))
     }
 
-    // pub async fn save_to_flash<S: NorFlash>(
-    //     &self,
-    //     storage: &mut MapStorage<Name, S, impl KeyCacheImpl<Name>>,
-    // ) -> Result<(), SaveError<S>> {
-    //     let mut data_buffer = [0; MAX_SIZE];
-
-    //     let mut bytes = [0; MAX_SIZE];
-
-    //     postcard::to_slice(&SerializedSource::from(self), &mut bytes)
-    //         .map_err(SaveError::SerializationError)?;
-
-    //     storage.store_item(&mut data_buffer, &self.name, &mut bytes);
-
-    //     Ok(())
-    // }
-
     fn from_serialized(name: Name, serialized: SerializedSource) -> Source {
         Source {
             name,
+            // Split the string buffer on newlines
             lines: serialized
                 .text
                 .split(|&character| character == b'\n')
@@ -182,6 +168,7 @@ impl Source {
         }
     }
 
+    /// Returns the text contained within the specified selection range.
     pub fn get_range(&self, range: SelectionRange) -> ByteString {
         let start = range.start();
         let end = range.end();
@@ -191,6 +178,7 @@ impl Source {
         } else {
             let mut text = ByteString::new();
             text.extend_from_slice(&self.lines[start.line][start.column..]);
+            // Preserve line breaks between copied lines:
             text.push(b'\n');
 
             for line in self.lines[start.line + 1..end.line].iter() {
@@ -212,6 +200,10 @@ impl Source {
         alloc::string::String::from_utf8(self.to_byte_string())
     }
 
+    /// # Safety
+    ///
+    /// Every line in the source must be valid UTF-8 bytes. It should be ASCII, so this is fine
+    /// in theory.
     pub unsafe fn to_string_unchecked(&self) -> alloc::string::String {
         unsafe { alloc::string::String::from_utf8_unchecked(self.to_byte_string()) }
     }

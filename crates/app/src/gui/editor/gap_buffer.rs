@@ -1,39 +1,19 @@
-use core::{ops::Range, str::Utf8Error};
+use core::str::Utf8Error;
 
 use crate::text::{ByteChar, ByteStr};
 
+/// Cursor column position within the buffer
 type Cursor = usize;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SelectionRange {
-    start: Cursor,
-    end: Cursor,
-}
-
-impl SelectionRange {
-    pub const fn new(range: Range<Cursor>) -> SelectionRange {
-        assert!(
-            range.start <= range.end,
-            "The range start must be less than its end!",
-        );
-
-        SelectionRange {
-            start: range.start,
-            end: range.end,
-        }
-    }
-
-    pub fn new_unchecked(range: Range<Cursor>) -> SelectionRange {
-        SelectionRange {
-            start: range.start,
-            end: range.end,
-        }
-    }
-}
-
+/// Fixed-capacity gap buffer used for efficient editing.
+///
+/// Text before the cursor occupies the beginning of `buffer`, while text after
+/// the cursor is stored at the end. The unused space between them forms the
+/// gap.
 #[derive(Clone, Debug)]
 pub struct GapBuffer<const N: usize> {
     buffer: [ByteChar; N],
+    /// Cursor position, equal to the start of the gap.
     cursor: Cursor,
     length: usize,
 }
@@ -78,6 +58,7 @@ impl<const N: usize> GapBuffer<N> {
         }
     }
 
+    /// Updates the cursor position and correspondingly moves the gap.
     pub fn set_cursor(&mut self, cursor: Cursor) -> Result<(), Error> {
         self.check_cursor(cursor)?;
 
@@ -106,6 +87,7 @@ impl<const N: usize> GapBuffer<N> {
         Ok(())
     }
 
+    /// Inserts a character at the cursor.
     pub fn insert(&mut self, character: ByteChar) -> Result<(), Error> {
         self.increase_length(1)?;
 
@@ -129,6 +111,7 @@ impl<const N: usize> GapBuffer<N> {
         }
     }
 
+    /// Deletes the character immediately after the cursor.
     pub fn try_forward_delete(&mut self) -> Result<(), Error> {
         if self.cursor < self.length {
             self.length -= 1;
@@ -139,19 +122,7 @@ impl<const N: usize> GapBuffer<N> {
         }
     }
 
-    pub fn try_delete(&mut self, range: SelectionRange) -> Result<(), Error> {
-        self.check_cursor(range.end)?;
-        self.set_cursor(range.start)?;
-
-        let count = range.end - range.start;
-
-        // Expand the gap to swallow the text---no need to set them to 0
-        // as they'll be overwritten later.
-        self.length -= count;
-
-        Ok(())
-    }
-
+    /// Inserts a slice of bytes at the cursor position.
     pub fn try_insert_many(&mut self, text: &ByteStr) -> Result<(), Error> {
         self.increase_length(text.len())?;
 
@@ -164,27 +135,15 @@ impl<const N: usize> GapBuffer<N> {
         Ok(())
     }
 
+    /// Iterates over the logical contents of the buffer.
     pub fn iter(&self) -> Iter<'_> {
         let gap_size = self.gap_size();
         Iter {
             left: self.buffer[..self.cursor].iter(),
+            // Skip the gap
             right: self.buffer[self.cursor + gap_size..].iter(),
         }
     }
-
-    // /// Converts the buffer into a null-terminated array of `ByteChar`s
-    // pub fn to_vec(&self) -> heapless::Vec<N> {
-    //     let mut out = hea;
-    //     let gap_size = self.gap_size();
-
-    //     // Copy the text before the cursor
-    //     out[..self.cursor].copy_from_slice(&self.buffer[..self.cursor]);
-
-    //     // Copy the text after the cursor
-    //     out[self.cursor..self.length].copy_from_slice(&self.buffer[self.cursor + gap_size..]);
-
-    //     out
-    // }
 
     pub fn to_vec(&self) -> heapless::Vec<ByteChar, N> {
         self.iter().copied().collect()
@@ -194,6 +153,9 @@ impl<const N: usize> GapBuffer<N> {
         heapless::String::from_utf8(self.to_vec())
     }
 
+    /// # Safety
+    ///
+    /// The contents of the gap buffer must **always** contain ASCII.
     pub unsafe fn to_string_unchecked(&self) -> heapless::String<N> {
         unsafe { heapless::String::from_utf8_unchecked(self.to_vec()) }
     }
@@ -204,6 +166,7 @@ pub enum Error {
     CannotExpandBeyondCapacity,
 }
 
+/// Iterator over the logical contents of a gap buffer.
 pub struct Iter<'a> {
     left: core::slice::Iter<'a, ByteChar>,
     right: core::slice::Iter<'a, ByteChar>,

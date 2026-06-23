@@ -9,31 +9,16 @@
 
 extern crate alloc;
 
-use core::mem::MaybeUninit;
-use core::panic::PanicInfo;
-
-use alloc::vec;
-use alloc::vec::Vec;
-use esp_hal::interrupt::software::SoftwareInterruptControl;
-use esp_hal::peripherals::Peripherals;
-use esp_hal::ram;
-use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{clock::CpuClock, interrupt::software::SoftwareInterrupt};
-
-use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 
-use app::gui::{colors, display};
 use app::hardware::Hardware;
 use app::input::encoder;
 use app::input::keyboard::keyboard_interface;
-use embassy_executor::{Spawner, task};
-use embassy_time::{Duration, Ticker, Timer};
-use esp_println::println;
-use esp_rtos::embassy::{Executor, InterruptExecutor};
+use embassy_executor::Spawner;
+use esp_rtos::embassy::InterruptExecutor;
 use static_cell::StaticCell;
 
-use app::{audio, input};
+use app::input;
 use app::{gui, usb};
 
 esp_bootloader_esp_idf::esp_app_desc!();
