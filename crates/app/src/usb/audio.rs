@@ -22,7 +22,7 @@ pub const MAX_POLYPHONY: usize = 4;
 pub const WAVETABLE_SIZE: usize = 2048;
 
 /// The lowest note produced by the keyboard layout.
-const BASE_NOTE: Note = Note::C3;
+const BASE_NOTE: Note = Note::C1;
 
 /// An event that modifies the synthesizer state.
 pub enum Event {

@@ -9,7 +9,6 @@
 
 extern crate alloc;
 
-pub mod audio;
 pub mod concurrency;
 pub mod gui;
 pub mod hardware;

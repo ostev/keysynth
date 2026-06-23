@@ -3,10 +3,9 @@ use esp_hal::{
     otg_fs::{self, Usb},
     peripherals::USB0,
 };
-use esp_println::println;
 use esp_sync::RawMutex;
 use static_cell::StaticCell;
-use synth::{note::Note, wavetable::Wavetable};
+use synth::wavetable::Wavetable;
 use usb_device::{
     bus::UsbBusAllocator,
     device::{StringDescriptors, UsbDevice, UsbDeviceBuilder, UsbVidPid},
@@ -18,14 +17,14 @@ use usbd_hid::{
         HIDClass, HidClassSettings, HidCountryCode, HidProtocol, HidSubClass, ProtocolModeConfig,
     },
 };
-use usbd_midi::{UsbMidiClass, UsbMidiPacketReader};
 
 use crate::{
-    audio::{self, WAVETABLE_SIZE},
     concurrency::try_receive_all,
+    usb::audio::WAVETABLE_SIZE,
     usb::{audio::SAMPLE_RATE, hid::UsbKeyboardStatus},
 };
 
+pub mod audio;
 pub mod hid;
 
 pub type Bus = esp_hal::otg_fs::UsbBus<esp_hal::otg_fs::Usb<'static>>;
@@ -100,7 +99,7 @@ pub struct UsbHardware {
 }
 
 mod audio_channel {
-    use crate::{audio, channel};
+    use crate::{channel, usb::audio};
 
     pub const CAPACITY: usize = 16;
 

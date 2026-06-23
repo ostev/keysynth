@@ -3,11 +3,12 @@ use embassy_futures::select::{Either, select};
 use keyboard_protocol::{Key, KeyboardStatus, KeyboardWithEncoderStatus, SpecialKey};
 
 use crate::{
-    audio, gui,
+    gui,
     input::{
         encoder::EncoderStatus,
         event::{Event, InputChange, KeyEvent},
     },
+    usb::audio,
     usb::{self, hid::UsbKeyboardStatus},
 };
 
@@ -152,6 +153,9 @@ pub async fn router() {
         // We cap the number of events per change to stop memory usage from increasing too much
         // and keep performance consistent.
         const MAX_EVENTS_PER_CHANGE: usize = 30;
+
+        // The current octave being played
+        let mut octave: u16 = 0;
 
         let events = changes
             .into_iter()
