@@ -2,7 +2,6 @@ use core::f32;
 
 use alloc::vec::Vec;
 use micromath::F32Ext;
-use rpds::{HashTrieMap, ht_map};
 
 use crate::{
     Value,
@@ -46,6 +45,13 @@ pub fn get_builtin(name: &str) -> Option<BuiltinValue> {
 
         "sqrt_2" => BuiltinValue::Number(f32::consts::SQRT_2),
         "recip_sqrt_2" => BuiltinValue::Number(f32::consts::FRAC_1_SQRT_2),
+
+        "saw" => BuiltinValue::Function(|callsite, function_span, args| {
+            unary_numeric(callsite, function_span, args, |_, value| {
+                let period = 2.0 * f32::consts::PI;
+                Ok(((value % period) / period) * 2.0 - 1.0)
+            })
+        }),
 
         "sin" => BuiltinValue::Function(|callsite, function_span, args| {
             unary_numeric(callsite, function_span, args, |_, value| {
@@ -170,7 +176,7 @@ fn nth_root<'v, 's>(span: Span, n: f32, value: f32) -> Result<f32, Error<'v, 's>
             if truncated_n == n && integer_n % 2 != 0 {
                 // The root is an odd, whole number, so we handle the sign
                 // ourselves
-                let positive_root = libm::powf(value.abs(), (1.0 / n));
+                let positive_root = libm::powf(value.abs(), 1.0 / n);
                 let sign = negative_one_pow(integer_n);
 
                 Ok(sign as f32 * positive_root)

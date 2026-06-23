@@ -185,7 +185,7 @@ impl Home {
                                         content: new_note.map(|note| {
                                             note.map(|note| note.to_name())
                                                 .flatten()
-                                                .unwrap_or(heapless::format!("<  >").unwrap())
+                                                .unwrap_or(heapless::format!("< >").unwrap())
                                         }),
                                         font_style: style,
                                     },
@@ -225,7 +225,7 @@ impl Home {
                             v.component(
                                 Sizing::Constrained(80),
                                 dial::Control {
-                                    color: Signal::constant(colors::TEXT),
+                                    color: Signal::constant(colors::PINK),
                                     info: dial::ControlInfo {
                                         progress: synth_parameters.map(|params| params.voice_gain),
                                         label: SignalRef::constant(&"Gain"),

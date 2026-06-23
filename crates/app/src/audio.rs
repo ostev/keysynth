@@ -160,7 +160,12 @@ pub struct State {
 impl State {
     /// Initialise the synthesiser with default parameters.
     pub fn new() -> State {
-        let default_wavetable = Wavetable::from_fn(libm::sinf);
+        let default_wavetable = Wavetable::from_fn(|phase| {
+            0.75 * libm::sinf(phase)
+                + 0.1 * libm::sinf(2.0 * phase)
+                + 0.1 * libm::sinf(0.5 * phase)
+                + 0.05 * libm::sinf(0.25 * phase)
+        });
 
         let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> =
             Synth::new(SAMPLE_RATE as f32, default_wavetable, Parameters::default());

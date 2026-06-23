@@ -165,33 +165,6 @@ enum Page {
     Home(home::Home),
 }
 
-impl Page {
-    /// Change the current page, running any relevant effects.
-    fn change(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
-        let (is_capturing, change) = match &page {
-            Page::SelectFile(_) => (
-                true,
-                Change::new()
-                    .with_effect(Effect::FetchFiles)
-                    .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
-            ),
-            Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
-            Page::Home(_) => (
-                false,
-                Change::new()
-                    .with_effect(Effect::SetPanel(Panel::default()))
-                    .with_focus_key(FocusKey::Home(home::FocusKey::default())),
-            ),
-        };
-
-        *self = page;
-
-        IS_CAPTURING_ALL_KEYBOARD_INPUT.store(is_capturing, atomic::Ordering::Relaxed);
-
-        change
-    }
-}
-
 impl State for Page {
     fn mark_resolved(&mut self) {
         match self {
@@ -222,6 +195,32 @@ impl Gui {
     fn set_message(&mut self, message: Option<Message>) {
         self.message_scroll.set(0);
         self.message.set(message);
+    }
+
+    /// Change the current page, running any relevant effects.
+    fn change_page(&mut self, page: Page) -> Change<Msg, FocusKey, Effect> {
+        let (is_capturing, change) = match &page {
+            Page::SelectFile(_) => (
+                true,
+                Change::new()
+                    .with_effect(Effect::FetchFiles)
+                    .with_focus_key(FocusKey::SelectFile(select_file::FocusKey::default())),
+            ),
+            Page::Editor => (true, Change::new().with_focus_key(FocusKey::Editor)),
+            Page::Home(_) => (
+                false,
+                Change::new()
+                    .with_effect(Effect::SetPanel(Panel::default()))
+                    .with_focus_key(FocusKey::Home(home::FocusKey::default())),
+            ),
+        };
+
+        self.page.set(page);
+        self.set_message(None);
+
+        IS_CAPTURING_ALL_KEYBOARD_INPUT.store(is_capturing, atomic::Ordering::Relaxed);
+
+        change
     }
 }
 
@@ -283,12 +282,19 @@ impl App for Gui {
                     }
                 }
             },
-            // Global keyboard shortcuts:
+            // Global keyboard shortcuts
             |key| match key {
-                Key::Standard(StandardKey::E) => match *self.page {
-                    Page::Editor => Some(Msg::ChangePage(Page::Home(home::Home::default()))),
-                    _ => self.editor.as_ref().map(|_| Msg::ChangePage(Page::Editor)),
-                },
+                Key::Standard(StandardKey::E) => Some(match *self.page {
+                    // Go home if the editor is open
+                    Page::Editor => Msg::ChangePage(Page::Home(home::Home::default())),
+                    // Otherwise open the editor if source code has been loaded
+                    _ => match self.editor.as_ref() {
+                        // Open the editor
+                        Some(_) => Msg::ChangePage(Page::Editor),
+                        // Open the select/create file screen
+                        None => Msg::ChangePage(Page::SelectFile(SelectFile::default())),
+                    },
+                }),
                 Key::Standard(StandardKey::H) => {
                     Some(Msg::ChangePage(Page::Home(home::Home::default())))
                 }
@@ -348,7 +354,7 @@ impl App for Gui {
                     self.editor
                         .update(|editor| *editor = Some(editor::State::new(source)));
 
-                    return self.page.update(|page| page.change(Page::Editor));
+                    return self.change_page(Page::Editor);
                 }
                 Err(error) => {
                     let text = Cow::Owned(format!(
@@ -416,7 +422,7 @@ impl App for Gui {
             }
             // Update the current page
             Msg::ChangePage(new_page) => {
-                return self.page.update(|page| page.change(new_page));
+                return self.change_page(new_page);
             }
 
             Msg::SetSynthParameters(parameters) => {
