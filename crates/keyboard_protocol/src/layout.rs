@@ -99,7 +99,7 @@ pub const STANDARD: Layout<6, 14> = Layout::new([
         standard!(Slash),
         modifier!(RightShift),
         standard!(Up),
-        standard!(MediaPlayPause),
+        standard!(SysRq),
         modifier!(LeftControl),
         // Mac-style layout for modifiers
         modifier!(LeftAlt),

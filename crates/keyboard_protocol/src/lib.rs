@@ -218,9 +218,6 @@ pub enum StandardKey {
     // Page up/down
     PageUp = 0x4b,
     PageDown = 0x4e,
-
-    // Media
-    MediaPlayPause = 0xe8,
 }
 
 impl StandardKey {
