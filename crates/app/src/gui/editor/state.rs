@@ -15,7 +15,7 @@ use crate::{
         },
     },
     input::event::{Event, KeyEvent},
-    text::{ByteChar, Name, fixed_str},
+    text::{fixed_str, ByteChar, Name},
 };
 
 /// Determines how many lines of text are visible on the screen at once.
@@ -236,17 +236,15 @@ impl EditorState {
                     // current line, depending on the direction.
                     let (edit, new_column) = if is_forward {
                         let deleted = self.source.forward_delete_line(self.cursor);
-                        let new_column =
-                            self.source.lines[self.cursor.line].len().saturating_sub(1);
                         (
                             history::Edit::GroupDelete(
                                 deleted,
                                 SelectionRange::new(
                                     self.cursor,
-                                    Position::new(self.cursor.line, new_column),
+                                    Position::new(self.cursor.line, self.cursor.column),
                                 ),
                             ),
-                            new_column,
+                            self.cursor.column,
                         )
                     } else {
                         let deleted = self.source.backspace_line(self.cursor);
@@ -272,34 +270,43 @@ impl EditorState {
 
                     self.history.push(edit, self.cursor, new_cursor);
                     self.cursor = new_cursor;
-                } else {
-                    let line = &mut self.source.lines[self.cursor.line];
+                } else if is_forward {
+                    let line = &self.source.lines[self.cursor.line];
+                    let at_end = self.cursor.column == line.len();
+                    let at_doc_end = at_end && self.cursor.line + 1 >= self.source.lines.len();
 
-                    let deletion_cursor = if is_forward {
-                        self.cursor
-                    } else {
-                        if self.cursor.column > 0 || self.cursor.line > 0 {
-                            Position {
-                                line: self.cursor.line,
-                                column: self.cursor.column,
-                            }
-                        } else {
-                            // We're at the start of the document, and we can't backspace here.
-                            return;
-                        }
-                    };
+                    if at_doc_end {
+                        // We're at the end of the document; nothing to delete.
+                        return;
+                    }
 
-                    // Character deletion falls back to deleting the newline when positioned at the
-                    // end of a line, allowing adjacent lines to be merged.
-                    let character = line
-                        .get(self.cursor.column)
-                        .map(|char| *char)
-                        .unwrap_or(b'\n');
+                    let character = line.get(self.cursor.column).copied().unwrap_or(b'\n');
 
-                    let new_cursor = self.source.delete(deletion_cursor);
+                    let new_cursor = self.source.forward_delete(self.cursor);
 
                     self.history.push(
-                        history::Edit::Backspace(character, deletion_cursor),
+                        history::Edit::ForwardDelete(character, self.cursor),
+                        self.cursor,
+                        new_cursor,
+                    );
+                    self.cursor = new_cursor;
+                } else {
+                    if self.cursor.column == 0 && self.cursor.line == 0 {
+                        // We're at the start of the document; nothing to delete.
+                        return;
+                    }
+
+                    let line = &self.source.lines[self.cursor.line];
+                    let character = if self.cursor.column > 0 {
+                        line[self.cursor.column - 1]
+                    } else {
+                        b'\n'
+                    };
+
+                    let new_cursor = self.source.delete(self.cursor);
+
+                    self.history.push(
+                        history::Edit::Backspace(character, self.cursor),
                         self.cursor,
                         new_cursor,
                     );

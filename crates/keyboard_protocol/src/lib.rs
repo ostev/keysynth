@@ -109,11 +109,6 @@ pub enum Modifier {
 pub enum SpecialKey {
     One = 0x01,
     Two = 0x02,
-    Three = 0x04,
-    Four = 0x08,
-    Five = 0x10,
-    // Six = 0x20,
-    // Seven = 0x40,
     Fn = 0x80,
 }
 
@@ -219,6 +214,13 @@ pub enum StandardKey {
 
     // Forward delete
     Delete = 0x4c,
+
+    // Page up/down
+    PageUp = 0x4b,
+    PageDown = 0x4e,
+
+    // Media
+    MediaPlayPause = 0xe8,
 }
 
 impl StandardKey {

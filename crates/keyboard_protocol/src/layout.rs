@@ -67,7 +67,7 @@ pub const STANDARD: Layout<6, 14> = Layout::new([
         standard!(LeftBracket),
         standard!(RightBracket),
         standard!(Backslash),
-        special!(Two),
+        standard!(PageUp),
         standard!(CapsLock),
         standard!(A),
         standard!(S),
@@ -83,7 +83,7 @@ pub const STANDARD: Layout<6, 14> = Layout::new([
         standard!(Semicolon),
         standard!(Apostrophe),
         standard!(Enter),
-        special!(Three),
+        standard!(PageDown),
         modifier!(LeftShift),
         standard!(Z),
         standard!(X),
@@ -99,7 +99,7 @@ pub const STANDARD: Layout<6, 14> = Layout::new([
         standard!(Slash),
         modifier!(RightShift),
         standard!(Up),
-        special!(Four),
+        standard!(MediaPlayPause),
         modifier!(LeftControl),
         // Mac-style layout for modifiers
         modifier!(LeftAlt),
@@ -107,9 +107,7 @@ pub const STANDARD: Layout<6, 14> = Layout::new([
         standard!(Space),
         // Two command keys are more useful than two option keys
         modifier!(RightSuper),
-        // We need an function key to send media commands.
-        // Also, a lot of Mac shortcuts rely on a function key.
-        special!(Fn),
+        modifier!(RightAlt),
         // Two control keys are also more useful than two option keys
         modifier!(RightControl),
         standard!(Left),

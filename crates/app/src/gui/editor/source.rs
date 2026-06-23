@@ -106,6 +106,22 @@ impl Source {
         self.lines[position.line].split_off(position.column)
     }
 
+    /// Deletes the character at the cursor position. If the cursor is at the end
+    /// of a line, merges with the next line (deleting the implicit newline).
+    pub fn forward_delete(&mut self, position: Position) -> Position {
+        let line_len = self.lines[position.line].len();
+        if position.column == line_len {
+            if position.line + 1 < self.lines.len() {
+                let next_line = self.lines.remove(position.line + 1);
+                self.lines[position.line].extend_from_slice(&next_line);
+            }
+            position
+        } else {
+            self.lines[position.line].remove(position.column);
+            position
+        }
+    }
+
     /// Inserts a sequence of characters as a single editing operation.
     pub fn group_insert(&mut self, text: &ByteStr, start: Position) -> Position {
         text.iter().fold(start, |position, character| {
@@ -128,7 +144,7 @@ impl Source {
             self.delete(end);
         }
 
-        start
+        range.start()
     }
 
     /// Applies an edit to the file and returns the new cursor position.
@@ -136,6 +152,7 @@ impl Source {
         match edit {
             Edit::Insert(character, position) => self.insert(character, position),
             Edit::Backspace(_, position) => self.delete(position),
+            Edit::ForwardDelete(_, position) => self.forward_delete(position),
 
             Edit::GroupInsert(text, start) => self.group_insert(&text, start),
             Edit::GroupDelete(_, range) => self.group_delete(range),

@@ -17,6 +17,7 @@ pub enum Edit {
     Insert(ByteChar, Position),
     GroupInsert(ByteString, Position),
     Backspace(ByteChar, Position),
+    ForwardDelete(ByteChar, Position),
     GroupDelete(ByteString, SelectionRange),
 }
 
@@ -82,29 +83,11 @@ impl History {
         self.redo_history.push_back(timestamped.clone());
 
         let reverse = match timestamped.edit {
-            Edit::Insert(character, position) => Edit::Backspace(
-                character,
-                Position {
-                    line: position.line,
-                    column: position.column,
-                },
-            ),
-            Edit::Backspace(character, position) => Edit::Insert(
-                character,
-                Position {
-                    line: position.line,
-                    column: position.column.saturating_sub(1),
-                },
-            ),
+            Edit::Insert(character, _) => Edit::Backspace(character, timestamped.cursor_after),
+            Edit::Backspace(character, _) => Edit::Insert(character, timestamped.cursor_after),
+            Edit::ForwardDelete(character, _) => Edit::Insert(character, timestamped.cursor_after),
             Edit::GroupInsert(text, position) => {
-                let range = SelectionRange::new(
-                    // Position {
-                    //     line: position.line,
-                    //     column: position.column,
-                    // },
-                    position,
-                    timestamped.cursor_after,
-                );
+                let range = SelectionRange::new(position, timestamped.cursor_after);
                 Edit::GroupDelete(text, range)
             }
             Edit::GroupDelete(text, range) => Edit::GroupInsert(text, range.start()),
