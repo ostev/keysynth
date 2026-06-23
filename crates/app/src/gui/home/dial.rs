@@ -1,4 +1,4 @@
-use core::f32::{self, MIN};
+use core::f32;
 
 use embedded_graphics::{
     geometry::{Angle, Point},
@@ -14,22 +14,29 @@ use embedded_gui::{
 };
 
 use crate::{
-    gui::{self, colors, display, event, home},
+    gui::{self, colors, display},
     input::event::Event,
 };
 
+/// Circular progress indicator used to display a normalized parameter value.
+///
+/// The dial is rendered as a filled sector with an outline ring.
 #[derive(Reactive)]
 pub struct Dial {
+    /// Progress should be between 0.0 and 1.0
     pub progress: Signal<f32>,
     pub color: Signal<display::Color>,
 }
 
+/// Radius of the dial, including the outline.
 const RADIUS: u16 = 20;
+// The thickness of the outline
 const OUTLINE_THICKNESS: u32 = 3;
 
 impl IntrinsicSize for Dial {
     fn intrinsic_size(&self) -> Size {
-        Size::new(RADIUS * 2 + 4, RADIUS * 2 + 4)
+        // The bounding box of the circle, plus a bit of padding
+        Size::new(RADIUS * 2 + 2, RADIUS * 2 + 2)
     }
 }
 
@@ -38,11 +45,15 @@ impl Primitive<display::Driver> for Dial {
         &self,
         target: &mut embedded_gui::draw::LocalTarget<display::Driver>,
     ) -> Result<(), <display::Driver as embedded_graphics::prelude::DrawTarget>::Error> {
-        let outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
+        let mut outline_style = PrimitiveStyle::with_stroke(*self.color, OUTLINE_THICKNESS);
+        outline_style.stroke_alignment = embedded_graphics::primitives::StrokeAlignment::Inside;
+
         let fill_style = PrimitiveStyle::with_fill(*self.color);
 
         let outline = Circle::new(Point::new(0, 0), RADIUS as u32 * 2);
 
+        // Ensure the sector is always visible, even for values very close to zero.
+        // The sector will start to become triangular at lower angles.
         const MIN_PROGRESS: f32 = 0.03;
 
         let angle = self.progress.clamp(MIN_PROGRESS, 1.0) * 2.0 * f32::consts::PI;
@@ -50,7 +61,7 @@ impl Primitive<display::Driver> for Dial {
         // Draw the fill sector
         Sector::from_circle(
             outline,
-            Angle::from_radians(-(f32::consts::PI / 2.0)),
+            Angle::from_radians(-(f32::consts::PI / 2.0)), // Draw from the top of the circle
             Angle::from_radians(angle),
         )
         .draw_styled(&fill_style, target)?;
@@ -62,20 +73,15 @@ impl Primitive<display::Driver> for Dial {
     }
 }
 
-// pub fn increase(value: f32, steps: usize) -> f32 {
-//     (value + (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
-// }
-
-// pub fn decrease(value: f32, steps: usize) -> f32 {
-//     (value - (1.0 / STEPS) * steps as f32).clamp(0.0, 1.0)
-// }
-
+/// State for a single dial control
 #[derive(Reactive, Clone)]
 pub struct ControlInfo {
+    /// Progress should be between 0.0 and 1.0
     pub progress: Signal<f32>,
     pub label: SignalRef<'static, &'static str>,
 }
 
+/// Displays a single parameter as a dial with a text label beneath it.
 #[derive(Reactive)]
 pub struct Control {
     pub color: Signal<display::Color>,
@@ -87,11 +93,7 @@ const FONT: MonoFont = ascii::FONT_10X20;
 
 impl IntrinsicSize for Control {
     fn intrinsic_size(&self) -> Size {
-        // Size::new(
-        //     RADIUS * 2,
-        //     RADIUS * 2 + FONT.character_size.height as u16 + 40,
-        // )
-        panic!("Fill only")
+        unimplemented!("Dial controls only support fill sizing!")
     }
 }
 
@@ -156,6 +158,7 @@ impl<'a>
     }
 }
 
+/// Displays two dial controls side-by-side with a fixed gap between them.
 #[derive(Reactive)]
 pub struct Panel {
     pub info_1: ControlInfo,
@@ -168,11 +171,7 @@ const MARGIN: u16 = 20;
 
 impl IntrinsicSize for Panel {
     fn intrinsic_size(&self) -> Size {
-        // Size::new(
-        //     RADIUS * 2 * 2 + MARGIN,
-        //     RADIUS * 2 + FONT.character_size.height as u16 + 20,
-        // )
-        panic!("Fill only")
+        unimplemented!("Dial panels only support fill layout!")
     }
 }
 

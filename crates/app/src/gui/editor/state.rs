@@ -1,31 +1,23 @@
-use core::{cmp, hint::select_unpredictable};
+use core::cmp;
 
-use alloc::{
-    borrow::{Cow, ToOwned},
-    format,
-};
-use embassy_time::{Duration, Instant};
-use embedded_gui::{app::Change, size::Size};
-use embedded_storage_async::nor_flash::NorFlash;
-use esp_alloc::export::enumset::__internal::set::new;
-use esp_println::println;
+use alloc::borrow::{Cow, ToOwned};
+use embassy_time::Duration;
+use embedded_gui::app::Change;
 use keyboard_protocol::{Key, Modifier, StandardKey};
 
 use crate::{
     gui::{
         self,
         editor::{
-            MAX_SIZE,
             clipboard::Clipboard,
             history::{self, History},
             position::{Direction, Position, Selection, SelectionRange},
             source::Source,
         },
-        effect::Effect,
         message::Message,
     },
     input::event::{Event, KeyEvent},
-    text::{ByteChar, ByteString, Name, fixed_str},
+    text::{ByteChar, Name, fixed_str},
 };
 
 /// Determines how many lines of text are visible on the screen at once.
@@ -34,6 +26,8 @@ pub const LINES_VISIBLE: usize = 8;
 /// Determines how many lines from either edge of the screen before the editor scrolls.
 pub const SCROLL_GAP: usize = 2;
 
+/// Contains all of the mutable state for the text editor, including the source code, editing state,
+/// undo history and transient UI state.
 #[derive(Clone)]
 pub struct EditorState {
     pub(super) source: Source,
@@ -41,7 +35,6 @@ pub struct EditorState {
     pub(super) selection: Selection,
     pub(super) clipboard: Clipboard,
     pub(super) history: History,
-    pub(super) message: Option<Message>,
 
     is_caps_lock: bool,
 
@@ -55,6 +48,7 @@ impl Default for EditorState {
 }
 
 impl EditorState {
+    /// Creates an editor positioned at the start of the provided source.
     pub fn new(source: Source) -> Self {
         let cursor = Position::new(0, 0);
 
@@ -64,7 +58,6 @@ impl EditorState {
             selection: Selection::new(None),
             clipboard: Clipboard::new(),
             history: History::new(cursor),
-            message: None,
 
             is_caps_lock: false,
 
@@ -72,6 +65,9 @@ impl EditorState {
         }
     }
 
+    /// Returns a short preview of the document for use in menus.
+    ///
+    /// The preview is taken from the final line and truncated if necessary.
     pub fn get_preview<const PREVIEW_LENGTH: usize>(&self) -> heapless::String<PREVIEW_LENGTH> {
         self.source
             .lines
@@ -83,30 +79,30 @@ impl EditorState {
                     )
                     .unwrap(),
                 )
-                .map(|mut preview| {
-                    preview.push_str("...").unwrap();
-                    preview
-                })
                 .unwrap_or(heapless::format!("<corrupted>").unwrap())
             })
-            .unwrap_or(heapless::format!("empty").unwrap())
+            .unwrap_or(heapless::format!("<empty>").unwrap())
     }
 
+    /// Serialise the source code into a buffer
     pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> Result<&'a [u8], postcard::Error> {
         self.source.serialize(buffer)
     }
 
+    /// Name of the currently open file
     pub fn name(&self) -> &Name {
         &self.source.name
     }
 
+    /// Convert the editor source to a `String`. The source **must** be valid UTF-8.
+    /// Since the user can only type ASCII, this will be fine unless the file has been
+    /// modified on flash.
     pub unsafe fn to_string_unchecked(&self) -> alloc::string::String {
         unsafe { self.source.to_string_unchecked() }
     }
 
+    /// Applies an editor [`Msg`] to the editor's state
     pub fn update(&mut self, msg: Msg) -> Change<gui::Msg, gui::FocusKey, gui::Effect> {
-        self.clear_message_if_old();
-
         match msg {
             // Movement
             Msg::MoveInsert(direction) => {
@@ -128,6 +124,24 @@ impl EditorState {
             }
             Msg::SelectAll => self.select_all(),
             Msg::SelectLine => self.select_line(),
+
+            // Whitespace
+            Msg::Tab => {
+                if self.selection.is_active() {
+                    self.delete(false, false);
+                }
+
+                // Insert two spaces
+                let new_cursor =
+                    (0..2).fold(self.cursor, |cursor, _| self.source.insert(b' ', cursor));
+
+                self.history.push(
+                    history::Edit::GroupInsert(alloc::vec![b' ', b' '], ()),
+                    self.cursor,
+                    new_cursor,
+                );
+                self.cursor = new_cursor;
+            }
 
             // Insertion
             Msg::Insert(character) => {
@@ -157,6 +171,7 @@ impl EditorState {
             Msg::ForwardDelete => self.delete(true, false),
             Msg::ForwardDeleteLine => self.delete(true, true),
 
+            // Clipboard
             Msg::Copy => self.copy(),
             Msg::Paste => self.paste(),
             Msg::Cut => {
@@ -193,27 +208,18 @@ impl EditorState {
         Change::new()
     }
 
-    fn clear_message_if_old(&mut self) {
-        const MESSAGE_DISPLAY_DURATION: Duration = Duration::from_secs(2);
-
-        if let Some(message) = &self.message {
-            if message.timestamp.elapsed() > MESSAGE_DISPLAY_DURATION {
-                self.message = None;
-            }
-        }
-    }
-
     fn copy(&mut self) {
         if let Some(selection_range) = self.selection.range(self.cursor) {
-            if let Err(error) = self.clipboard.set(self.source.get_range(selection_range)) {
-                self.message = Some(Message::now(Cow::Borrowed(error.as_str())))
-            }
+            // If the copied selection is too large (which it probably won't be),
+            // we just won't copy. This is fine, since it's pretty obvious.
+            let _ = self.clipboard.set(self.source.get_range(selection_range));
         }
     }
 
     fn delete(&mut self, is_forward: bool, is_line: bool) {
         match self.selection.range(self.cursor) {
             Some(selection_range) => {
+                // Delete the active selection
                 let text = self.source.get_range(selection_range);
 
                 let new_cursor = self.source.group_delete(selection_range);
@@ -230,6 +236,8 @@ impl EditorState {
 
             None => {
                 if is_line {
+                    // Line deletion removes everything from the cursor to the beginning/end of the
+                    // current line, depending on the direction.
                     let (edit, new_column) = if is_forward {
                         let deleted = self.source.forward_delete_line(self.cursor);
                         let new_column =
@@ -285,6 +293,8 @@ impl EditorState {
                         }
                     };
 
+                    // Character deletion falls back to deleting the newline when positioned at the
+                    // end of a line, allowing adjacent lines to be merged.
                     let character = line
                         .get(deletion_cursor.column)
                         .map(|char| *char)
@@ -303,6 +313,7 @@ impl EditorState {
         }
     }
 
+    // Replace the current selection before inserting the clipboard contents.
     fn paste(&mut self) {
         if self.selection.is_active() {
             // Delete the current selection if there is one
@@ -322,6 +333,7 @@ impl EditorState {
         self.cursor = new_cursor;
     }
 
+    /// Moves the cursor by one step.
     fn move_cursor(&mut self, direction: Direction, is_selecting: bool) {
         let start = self.cursor;
 
@@ -369,7 +381,7 @@ impl EditorState {
         self.clamp_cursor_column();
     }
 
-    /// Scrolls the editor vertically if necessary
+    /// Scroll the editor up or down so that the cursor is kept out of the scroll margin.
     fn scroll(&mut self) {
         let offset_from_top = self.cursor.line.saturating_sub(self.scroll_start);
         let offset_from_bottom = LINES_VISIBLE.saturating_sub(offset_from_top);
@@ -384,6 +396,7 @@ impl EditorState {
         }
     }
 
+    /// Ensures the cursor column remains valid after changing lines.
     fn clamp_cursor_column(&mut self) {
         self.cursor.column = cmp::min(
             self.cursor.column,
@@ -391,6 +404,7 @@ impl EditorState {
         );
     }
 
+    /// Moves the cursor to the beginning/end of the current line or document.
     fn jump_cursor(&mut self, direction: Direction, is_selecting: bool) {
         let start = self.cursor;
 
@@ -410,6 +424,7 @@ impl EditorState {
         self.update_selection(start, is_selecting);
     }
 
+    /// Selects everything and moves the cursor to the end
     fn select_all(&mut self) {
         let last_line = self.source.lines.len().saturating_sub(1);
         let end_col = self.source.lines[last_line].len();
@@ -421,6 +436,7 @@ impl EditorState {
         self.selection = Selection::new(Some(Position::zero()));
     }
 
+    /// Select all of the current line
     fn select_line(&mut self) {
         let line_len = self.source.lines[self.cursor.line].len();
 
@@ -440,6 +456,9 @@ pub enum Msg {
     BackspaceLine,
     ForwardDelete,
     ForwardDeleteLine,
+
+    // Whitespace
+    Tab,
 
     // Selection
     MoveSelection(Direction),
@@ -462,13 +481,12 @@ pub enum Msg {
 }
 
 impl Msg {
+    /// Converts keyboard input into editor [`Msg`]s.
     pub fn from_event(event: Event) -> Option<Msg> {
         match event {
             Event::Key { event, keyboard } => {
-                let is_shift = keyboard.modifier_bitfield.contains(Modifier::LeftShift)
-                    | keyboard.modifier_bitfield.contains(Modifier::RightShift);
-                let is_super = keyboard.modifier_bitfield.contains(Modifier::LeftSuper)
-                    | keyboard.modifier_bitfield.contains(Modifier::RightSuper);
+                let is_shift = keyboard.is_shift();
+                let is_super = keyboard.is_super();
 
                 let msg = match event {
                     KeyEvent::Pressed(key) => match key {
@@ -558,6 +576,9 @@ impl Msg {
 
                                 // Caps lock
                                 StandardKey::CapsLock => Msg::ToggleCapsLock,
+
+                                // Whitespace
+                                StandardKey::Tab => Msg::Tab,
 
                                 // Insertion
                                 _ => {

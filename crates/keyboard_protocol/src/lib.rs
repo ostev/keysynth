@@ -39,6 +39,11 @@ impl KeyboardStatus {
         }
     }
 
+    pub fn is_shift(&self) -> bool {
+        self.modifier_bitfield
+            .intersects(make_bitflags!(Modifier::{LeftShift | RightShift}))
+    }
+
     pub fn is_super(&self) -> bool {
         self.modifier_bitfield
             .intersects(make_bitflags!(Modifier::{LeftSuper | RightSuper}))
@@ -66,13 +71,13 @@ impl KeyboardStatus {
             .into_iter()
             .filter(move |key| !self.keys.contains(key));
 
-        /// What keys have been pressed?
+        // What keys have been pressed?
         let pressed = added_standard
             .map(|key| Key::Standard(key))
             .chain(added_modifiers.into_iter().map(Key::Modifier))
             .chain(added_special.into_iter().map(Key::Special));
 
-        /// What keys have been released?
+        // What keys have been released?
         let released = released_standard
             .map(|key| Key::Standard(key))
             .chain(removed_modifiers.into_iter().map(Key::Modifier))

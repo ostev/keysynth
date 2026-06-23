@@ -6,6 +6,7 @@ use embedded_graphics::{
 
 use crate::gui::colors;
 
+/// Draw a background rounded reactangle
 pub fn draw_background<T: DrawTarget<Color = Rgb565>>(
     rectangle: Rectangle,
     target: &mut T,

@@ -4,6 +4,8 @@
 //! > Daylight makes me feel like Dracula (Dracula)...
 //! > Run from the sun like Dracula!
 //! --- "Dracula" by Tame Impala
+//!
+//! The colour scheme is https://draculatheme.com/.
 
 use embedded_graphics::pixelcolor::Rgb565;
 

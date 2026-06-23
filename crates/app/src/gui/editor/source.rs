@@ -4,7 +4,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 use embedded_storage_async::nor_flash::NorFlash;
 use esp_println::println;
-use sequential_storage::{cache::KeyCacheImpl, map::MapStorage};
 use serde::{Deserialize, Serialize};
 
 use crate::{

@@ -1,10 +1,7 @@
 use core::fmt::Write;
 
 use embedded_graphics::{
-    draw_target::DrawTarget,
     mono_font::{MonoFont, MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::{Rgb565, RgbColor},
-    primitives::{CornerRadii, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StyledDrawable},
     text::renderer::TextRenderer,
 };
 use embedded_gui::{
@@ -26,6 +23,8 @@ use crate::{
     text,
 };
 
+/// Renders the visible portion of the source editor, including line numbers,
+/// selections and the cursor.
 #[derive(Reactive)]
 pub struct EditorView<'a> {
     pub state: SignalRef<'a, EditorState>,
@@ -39,8 +38,12 @@ impl<'a> IntrinsicSize for EditorView<'a> {
 }
 
 const FONT: MonoFont = FONT_10X20;
+/// Maximum number of digits reserved for line numbers.
 const GUTTER_MAX_CHARACTERS: u32 = 3;
+/// Width of the line number gutter, including trailing spacing.
 const GUTTER_WIDTH: u32 = text::width_with_space_after(&FONT, GUTTER_MAX_CHARACTERS);
+/// Maximum number of source characters that can be displayed on a single line
+/// once the gutter and padding have been accounted for.
 const MAX_LINE_LENGTH: u32 =
     text::characters_in(&FONT, display::WIDTH as u32) - GUTTER_MAX_CHARACTERS - 4;
 
@@ -62,6 +65,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
 
         let font_style = MonoTextStyle::new(&FONT, colors::TEXT);
 
+        // Begin horizontally scrolling once the cursor moves beyond the visible width.
         let scroll_x_offset = self
             .state
             .cursor
@@ -70,11 +74,13 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
         let selection_range = self.state.selection.range(self.state.cursor);
 
         for (index, line) in lines {
+            // Text starts after the gutter
             let line_start = embedded_graphics::geometry::Point::new(
-                4 * FONT_10X20.character_size.width as i32,
+                text::width(&FONT_10X20, GUTTER_MAX_CHARACTERS + 1) as i32,
                 y_offset,
             );
 
+            // Selection is drawn before text as it needs to appear behind it
             if let Some(selection) = selection_range {
                 let Ok(_) = selection.draw(
                     &FONT,
@@ -98,6 +104,7 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
             };
 
             if index >= 999 {
+                // We can't display more than 3 digits in the gutter
                 draw(
                     "This file is too long and I can't display all of it!",
                     line_start,
@@ -118,12 +125,15 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
 
                 if line.len() > scroll_x_offset {
                     draw(
+                        // SAFETY: The code is always in ASCII. This means that `scroll_x_offset`
+                        // always refers to a character boundary.
                         unsafe { str::from_utf8_unchecked(&line[scroll_x_offset..]) },
                         line_start,
                     );
                 }
 
                 if index == self.state.cursor.line {
+                    // Draw the cursor only on the active line
                     draw_cursor(
                         &FONT,
                         embedded_graphics::geometry::Point::new(
@@ -140,51 +150,6 @@ impl<'a> Primitive<display::Driver> for EditorView<'a> {
             }
 
             y_offset += FONT_10X20.character_size.height as i32;
-            // let scanner =
-            //     calc::parser::scanner::Scanner::new(unsafe { str::from_utf8_unchecked(line) });
-
-            // let mut x_offset = 0;
-
-            // for token in scanner {
-            //     let (text, color) = match token {
-            //         Ok((start, token, end)) => (
-            //             0,
-            //             match token {
-            //                 Token::Newline => colors::TEXT,
-            //                 Token::Semicolon => colors::TEXT,
-            //                 Token::Identifier(_) => colors::TEXT,
-            //                 Token::Number(_) => colors::LITERAL,
-            //                 Token::True => colors::KEYWORD,
-            //                 Token::False => colors::KEYWORD,
-            //                 Token::Fn => colors::KEYWORD,
-            //                 Token::LeftParen => colors::TEXT,
-            //                 Token::RightParen => colors::TEXT,
-            //                 Token::Comma => colors::TEXT,
-            //                 Token::Arrow => colors::TEXT,
-            //                 Token::Minus => colors::TEXT,
-            //                 Token::Plus => colors::TEXT,
-            //                 Token::Slash => colors::TEXT,
-            //                 Token::Star => colors::TEXT,
-            //                 Token::Caret => colors::TEXT,
-            //                 Token::Equal => colors::TEXT,
-            //                 Token::EqualEqual => colors::TEXT,
-            //                 Token::BangEqual => colors::TEXT,
-            //                 Token::Greater => colors::TEXT,
-            //                 Token::GreaterEqual => colors::TEXT,
-            //                 Token::Less => colors::TEXT,
-            //                 Token::LessEqual => colors::TEXT,
-            //                 Token::If => colors::KEYWORD,
-            //                 Token::Then => colors::KEYWORD,
-            //                 Token::Else => colors::KEYWORD,
-            //                 Token::Let => colors::KEYWORD,
-            //                 Token::In => colors::KEYWORD,
-            //             },
-            //         ),
-            //         Err((start, _, end)) => colors::ERROR,
-            //     };
-
-            //     MonoTextStyle::new(&FONT_10X20, color);
-            // }
         }
 
         Ok(())

@@ -23,6 +23,7 @@ use crate::{
 
 pub const VISIBLE_FILES: usize = 8;
 
+/// Represents a list of files that the user can scroll through
 #[derive(Reactive)]
 pub struct FileList<'a> {
     pub files: SignalRef<'a, Result<heapless::Vec<Name, { MAX_FILES }>, LoadError>>,
@@ -31,7 +32,7 @@ pub struct FileList<'a> {
 
 impl<'a> IntrinsicSize for FileList<'a> {
     fn intrinsic_size(&self) -> embedded_gui::size::Size {
-        unimplemented!()
+        unimplemented!("File list only supports fill sizing")
     }
 }
 
@@ -67,12 +68,15 @@ impl<'a>
         gui::AnyComponent<'a>,
         gui::AnyPrimitive<'a>,
     > {
+        // Convert the provided list of files into a list of file entry views.
         let Ok(list_items) = self
             .files
             .as_ref()
             .unwrap_or(&heapless::Vec::from_array([fixed_str(&"Error loading")]))
             .iter()
+            // Skip scrolled files
             .skip(self.scroll.saturating_sub(VISIBLE_FILES))
+            // Only take the number of files that we can show on screen at once
             .take(VISIBLE_FILES)
             .enumerate()
             .map(|(index, file_name)| {
@@ -85,6 +89,7 @@ impl<'a>
                     [],
                 )
             })
+            // To ensure that we always provide an array of 10 elements, we pad it with spacer rows
             .pad_using(VISIBLE_FILES, |_| v.spacer())
             .collect::<heapless::Vec<_, { VISIBLE_FILES }>>()
             .into_array::<VISIBLE_FILES>()
@@ -102,6 +107,7 @@ pub enum ScrollDirection {
     Down,
 }
 
+/// A row in a file list representing an individual file
 #[derive(Reactive)]
 pub struct FileEntry {
     pub name: Signal<Name>,
@@ -110,7 +116,7 @@ pub struct FileEntry {
 
 impl IntrinsicSize for FileEntry {
     fn intrinsic_size(&self) -> embedded_gui::size::Size {
-        Size::new(200, 40)
+        unimplemented!("File entry only supports fill sizing")
     }
 }
 
@@ -157,18 +163,22 @@ impl<'a>
                     select_file::FocusKey::FileList(*self.index),
                     event::on_keydown(
                         move |key| match key {
+                            // Scroll to the file above us
                             Key::Standard(StandardKey::Down) => {
                                 Some(select_file::Msg::ScrollFileList(ScrollDirection::Down))
                             }
+                            // Scroll to the file below us
                             Key::Standard(StandardKey::Up) => {
                                 Some(select_file::Msg::ScrollFileList(ScrollDirection::Up))
                             }
+                            // They've selected us!
                             Key::Standard(StandardKey::Enter) => {
                                 Some(select_file::Msg::SelectFile(index))
                             }
                             _ => None,
                         },
                         move |key| match key {
+                            // super + backspace -> delete :(
                             Key::Standard(StandardKey::Backspace) => {
                                 Some(select_file::Msg::DeleteFile(index))
                             }
