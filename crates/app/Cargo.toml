@@ -32,7 +32,7 @@ rpds = { version = "1.2.1", default-features = false }
 archery = "1.2.2"
 
 
-embedded-gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.0.24" }
+embedded-gui = { git = "https://github.com/ostev/embedded-gui.git", version = "0.0.25" }
 
 static_cell = "2.1.1"
 usbd-hid = "0.10.0"
