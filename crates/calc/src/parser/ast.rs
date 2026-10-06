@@ -26,6 +26,7 @@ pub enum Expr<'a, 's> {
     Literal(Literal),
     /// Represents an `if ... then ... else ...` expression.
     Branch(Branch<'a, 's>),
+    /// Represents a function expression
     Function(Function<'a, 's>),
     /// Represents a function application.
     Application(Box<'a, Spanned<'a, 's>>, Vec<Spanned<'a, 's>>),

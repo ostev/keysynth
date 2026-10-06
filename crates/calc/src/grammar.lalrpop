@@ -1,5 +1,5 @@
 
-use crate::parser::ast::{self, Spanned, Expr, Literal, BinaryOp, NumericBinaryOp, ComparisonBinaryOp, Let, Assignment, Function};
+use crate::parser::ast::{self, Spanned, Expr, Literal, BinaryOp, NumericBinaryOp, ComparisonBinaryOp, Let, Branch, Assignment, Function};
 use crate::parser::scanner::{self, Token};
 use bumpalo::{Bump, boxed::Box};
 use alloc::vec::Vec;
@@ -65,9 +65,12 @@ pub Expr: Spanned<'a, 's> = {
         => Spanned::new(start, end, Expr::BinaryOp(Box::new_in(lhs, bump), BinaryOp::Comparison(op), Box::new_in(rhs, bump))),
 
     #[precedence(level="6")] #[assoc(side="none")]
+    <start: @L> <value: Branch> <end: @R> => Spanned::new(start, end, Expr::Branch(value)),
+
+    #[precedence(level="7")] #[assoc(side="none")]
     <start: @L> <value: Let> <end: @R> => Spanned::new(start, end, Expr::Let(value)),
 
-    #[precedence(level="7")] #[assoc(side="right")]
+    #[precedence(level="8")] #[assoc(side="right")]
     <start: @L> <value: AnonymousFunction> <end: @R> => Spanned::new(start, end, Expr::Function(value)),
 };
 
@@ -152,6 +155,15 @@ Let: Let<'a, 's> = {
         => Let {
             assignments,
             body: Box::new_in(body, bump),
+        }
+}
+
+Branch: Branch<'a, 's> = {
+    "if" <predicate: Expr> "then" <if_true: Expr> "else" <otherwise: Expr>
+        => Branch {
+            predicate: Box::new_in(predicate, bump),
+            if_true: Box::new_in(if_true, bump),
+            otherwise: Box::new_in(otherwise, bump)
         }
 }
 
