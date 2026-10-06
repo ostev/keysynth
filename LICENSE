@@ -1,3 +1,9 @@
+Note that the following directories are under different licenses, as noted in the LICENSE file in each directory:
+
+- [`hardware/`](hardware/) is licensed under CERN-OHL-S-2.0.
+
+The following is the general license for the project unless stated otherwise.
+
 MIT License
 
 Copyright (c) 2026 ostev
