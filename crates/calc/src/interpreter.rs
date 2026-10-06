@@ -1,8 +1,6 @@
 use core::{cmp, f32, fmt, ops};
 
-use alloc::{format, rc::Rc, string::ToString, vec, vec::Vec};
-use bumpalo::{Bump, boxed::Box};
-use codespan_reporting::diagnostic::{Diagnostic, Label};
+use alloc::{rc::Rc, vec::Vec};
 use micromath::F32Ext;
 use rpds::{HashTrieMap, List};
 

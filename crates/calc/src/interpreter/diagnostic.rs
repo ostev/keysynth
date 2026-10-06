@@ -1,4 +1,4 @@
-use alloc::{format, string::ToString, vec, vec::{Vec}};
+use alloc::{format, string::ToString, vec};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use micromath::F32Ext;
 

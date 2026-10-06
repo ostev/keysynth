@@ -1,6 +1,6 @@
 use embassy_time::Instant;
 
-use keyboard_protocol::StandardKey;
+use keyboard_protocol::{Key, StandardKey};
 use synth::{Parameters, Sample, Synth, note::Note, wavetable::Wavetable};
 use usbd_audio::AudioClass;
 
@@ -27,7 +27,16 @@ const BASE_NOTE: Note = Note::C1;
 /// An event that modifies the synthesizer state.
 pub enum Event {
     /// Starts or stops a note.
-    Note { note: Note, is_pressed: bool },
+    ToggleKeyboardNote {
+        logical_key: synth::keyboard::Key,
+        is_pressed: bool,
+    },
+    /// Stops all notes
+    StopAll,
+    /// Move up an octave
+    OctaveUp,
+    /// Move down an octave
+    OctaveDown,
     /// Updates a parameter controlled by the secondary or tertiary encoders.
     PanelEncoderUpdate {
         direction: encoder::Direction,
@@ -61,18 +70,24 @@ impl Event {
     /// to a synth function
     fn from_key_event(event: KeyEvent) -> Option<Event> {
         match event {
-            KeyEvent::Pressed(keyboard_protocol::Key::Standard(key)) => {
-                let note = note_from_key(key)?;
-                Some(Event::Note {
-                    note,
-                    is_pressed: true,
-                })
-            }
+            KeyEvent::Pressed(Key::Standard(key)) => match key {
+                StandardKey::PageUp => Some(Event::OctaveUp),
+                StandardKey::PageDown => Some(Event::OctaveDown),
+
+                StandardKey::F1 => Some(Event::StopAll),
+
+                _ => {
+                    // let note = note_from_key(key)?;
+                    Some(Event::ToggleKeyboardNote {
+                        logical_key: synth_key_from_keyboard_key(key)?,
+                        is_pressed: true,
+                    })
+                }
+            },
 
             KeyEvent::Released(keyboard_protocol::Key::Standard(key)) => {
-                let note = note_from_key(key)?;
-                Some(Event::Note {
-                    note,
+                Some(Event::ToggleKeyboardNote {
+                    logical_key: synth_key_from_keyboard_key(key)?,
                     is_pressed: false,
                 })
             }
@@ -144,17 +159,10 @@ fn synth_key_from_keyboard_key(
     Some(synth::keyboard::Key::new(row, column))
 }
 
-/// Converts a keyboard key into the note it represents, returning [`None`]
-/// if the key is not mapped to a note.
-fn note_from_key(key: keyboard_protocol::StandardKey) -> Option<Note> {
-    let synth_key = synth_key_from_keyboard_key(key)?;
-
-    synth::keyboard::note_of(synth_key, BASE_NOTE)
-}
-
 /// Represents the state of the audio engine
 pub struct State {
     synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE>,
+    base_octave: u32,
 }
 
 impl State {
@@ -170,7 +178,10 @@ impl State {
         let synth: Synth<MAX_POLYPHONY, WAVETABLE_SIZE> =
             Synth::new(SAMPLE_RATE as f32, default_wavetable, Parameters::default());
 
-        State { synth }
+        State {
+            synth,
+            base_octave: 3,
+        }
     }
 
     pub fn set_wavetable(&mut self, wavetable: Wavetable<WAVETABLE_SIZE>) {
@@ -191,20 +202,45 @@ impl State {
     /// Applies a single event to the audio engine.
     pub fn apply_event(&mut self, event: Event) {
         match event {
-            Event::Note { note, is_pressed } => {
+            Event::ToggleKeyboardNote {
+                logical_key,
+                is_pressed,
+            } => {
+                let Some(adjusted_note) = synth::keyboard::note_of(
+                    logical_key,
+                    Note::from_semitones((self.base_octave * 12) as f32, Note::C1),
+                ) else {
+                    return;
+                };
+
                 // We discard the error as we don't really care if there aren't any free voices.
                 // The note just won't play.
                 let _ = if is_pressed {
+                    gui::set_new_note(adjusted_note);
+
                     let note_event = synth::note::Event {
-                        note,
+                        note: adjusted_note,
                         timestamp: Instant::now().as_micros(),
                     };
 
                     self.synth.note_on(note_event)
                 } else {
-                    self.synth.note_off(note)
+                    self.synth.note_off(adjusted_note)
                 };
             }
+
+            Event::StopAll => {
+                self.synth.all_notes_off();
+            }
+
+            Event::OctaveUp => {
+                self.base_octave = self.base_octave.saturating_add(1).max(8);
+            }
+
+            Event::OctaveDown => {
+                self.base_octave = self.base_octave.saturating_sub(1);
+            }
+
             Event::PanelEncoderUpdate {
                 direction,
                 panel,

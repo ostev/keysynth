@@ -8,7 +8,6 @@ use embedded_gui::{
     layout::{Direction, IntrinsicSize, Sizing},
     primitive::owned_text::OwnedText,
     signal::{Reactive, Signal, SignalRef},
-    size::Size,
 };
 
 use itertools::Itertools;

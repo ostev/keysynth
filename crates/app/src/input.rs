@@ -154,9 +154,6 @@ pub async fn router() {
         // and keep performance consistent.
         const MAX_EVENTS_PER_CHANGE: usize = 30;
 
-        // The current octave being played
-        let mut octave: u16 = 0;
-
         let events = changes
             .into_iter()
             .map(|change| state.apply::<MAX_EVENTS_PER_CHANGE>(change).into_iter())
@@ -194,14 +191,6 @@ pub async fn router() {
                     } else if let Some(audio_event) =
                         audio::Event::from_event(gui::current_panel(), event)
                     {
-                        match &audio_event {
-                            audio::Event::Note { note, is_pressed } => {
-                                if *is_pressed {
-                                    gui::set_new_note(*note);
-                                }
-                            }
-                            _ => {}
-                        }
                         audio.send(audio_event).await;
                     }
                 }

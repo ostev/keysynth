@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     gui::colors,
-    text::{self, ByteChar, ByteStr},
+    text::{self, ByteChar},
 };
 
 /// A cursor position in a source code file, represented as its line

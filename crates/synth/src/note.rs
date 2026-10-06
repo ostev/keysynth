@@ -73,6 +73,8 @@ impl Note {
 
         Some(heapless::format!("{}{}", NAMES[semitone_offset as usize], octave).unwrap())
     }
+
+    // pub fn offset_by_octave
 }
 
 const NAMES: [&'static str; 12] = [

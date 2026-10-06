@@ -141,6 +141,13 @@ impl<const N: usize, const S: usize> Synth<N, S> {
         Ok(())
     }
 
+    /// Releases all notes at once.
+    pub fn all_notes_off(&mut self) {
+        for voice in self.voices.iter_mut().flatten() {
+            voice.release();
+        }
+    }
+
     /// Sample the synthesiser into the provided buffer slice.
     pub fn sample_into(&mut self, buffer: &mut [Sample]) {
         let mut voices: heapless::Vec<&mut Voice<S>, N> = self

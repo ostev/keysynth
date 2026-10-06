@@ -1,4 +1,3 @@
-use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::peek_next::{IteratorExt, PeekableNext};
 use core::fmt;

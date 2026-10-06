@@ -1,11 +1,10 @@
 use bumpalo::Bump;
-use lalrpop_util::ParseError;
 
 use crate::{
     grammar,
     parser::{
-        ast::{Expr, Spanned},
-        scanner::{Scanner, Token},
+        ast::Spanned,
+        scanner::Scanner,
     },
 };
 
