@@ -718,7 +718,8 @@ dependencies = [
 
 [[package]]
 name = "embedded-gui"
-version = "0.0.23"
+version = "0.0.24"
+source = "git+https://github.com/ostev/embedded-gui.git#880f57753a7c65476dacb2b9bafdaea2b827bcf4"
 dependencies = [
  "bumpalo",
  "embedded-graphics",
@@ -729,7 +730,8 @@ dependencies = [
 
 [[package]]
 name = "embedded-gui-macros"
-version = "0.0.10"
+version = "0.0.11"
+source = "git+https://github.com/ostev/embedded-gui.git#880f57753a7c65476dacb2b9bafdaea2b827bcf4"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
