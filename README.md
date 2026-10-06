@@ -17,6 +17,10 @@ The source code is divided into the following crates:
 - [`keyboard_rp2040`](crates/keyboard_rp2040/) for running the keyboard matrix on the RP2040, and
 - [`app`](crates/app/) for running the main application on the ESP32-S3.
 
+## Demo
+
+There'll be a link to a video demo up on YouTube once I've filmed it.
+
 ## :construction: :construction: :construction: Roadmap
 
 This project isn't finished! Equation synthesis and keyboard input all work, but I want to implement some more features before considering it complete:
