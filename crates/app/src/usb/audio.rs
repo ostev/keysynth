@@ -180,7 +180,7 @@ impl State {
 
         State {
             synth,
-            base_octave: 3,
+            base_octave: 2,
         }
     }
 
@@ -234,7 +234,8 @@ impl State {
             }
 
             Event::OctaveUp => {
-                self.base_octave = self.base_octave.saturating_add(1).max(8);
+                const MAX_OCTAVE_OFFSET: u32 = 6;
+                self.base_octave = self.base_octave.saturating_add(1).min(MAX_OCTAVE_OFFSET);
             }
 
             Event::OctaveDown => {
