@@ -150,7 +150,6 @@ impl Hardware {
             interrupt_2: software_interrupt.software_interrupt2,
             cpu_control,
 
-            // },
             keyboard,
             encoder,
             usb,

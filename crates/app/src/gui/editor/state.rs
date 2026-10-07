@@ -15,7 +15,7 @@ use crate::{
         },
     },
     input::event::{Event, KeyEvent},
-    text::{fixed_str, ByteChar, Name},
+    text::{ByteChar, Name, fixed_str},
 };
 
 /// Determines how many lines of text are visible on the screen at once.
@@ -59,27 +59,6 @@ impl EditorState {
 
             scroll_start: 0,
         }
-    }
-
-    /// Returns a short preview of the document for use in menus.
-    ///
-    /// The preview is taken from the final line and truncated if necessary.
-    pub fn get_preview<const PREVIEW_LENGTH: usize>(&self) -> heapless::String<PREVIEW_LENGTH> {
-        self.source
-            .lines
-            .iter()
-            .rev()
-            .find(|line| !line.is_empty())
-            .map(|last_line| {
-                heapless::String::<PREVIEW_LENGTH>::from_utf8(
-                    heapless::Vec::from_slice(
-                        &last_line[..(PREVIEW_LENGTH - 3).min(last_line.len())],
-                    )
-                    .unwrap(),
-                )
-                .unwrap_or(heapless::format!("<corrupted>").unwrap())
-            })
-            .unwrap_or(heapless::format!("<empty>").unwrap())
     }
 
     /// Serialise the source code into a buffer

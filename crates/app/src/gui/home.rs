@@ -202,13 +202,23 @@ impl Home {
                                 ),
                             ),
                             {
-                                let preview_text = editor.map(|option_editor| {
-                                    option_editor
-                                        .as_ref()
-                                        .map(|editor| editor.get_preview::<PREVIEW_LINE_LENGTH>())
-                                        .unwrap_or(heapless::format!("<none>").unwrap())
-                                });
-                                println!("Preview text: {:?}", preview_text);
+                                let preview_text: Signal<heapless::String<PREVIEW_LINE_LENGTH>> =
+                                    editor.map(|option_editor| {
+                                        option_editor
+                                            .as_ref()
+                                            .map(|editor| {
+                                                heapless::String::from_utf8(
+                                                    editor
+                                                        .name()
+                                                        .iter()
+                                                        .take(PREVIEW_LINE_LENGTH)
+                                                        .copied()
+                                                        .collect(),
+                                                )
+                                                .unwrap_or(heapless::format!("<err>").unwrap())
+                                            })
+                                            .unwrap_or(heapless::format!("<none>").unwrap())
+                                    });
 
                                 v.centered(
                                     Direction::Horizontal,
